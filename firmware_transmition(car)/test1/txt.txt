@@ -1,0 +1,1 @@
+Esse teste tem o objetivo de conectar ao barramento can e imprimir o resultado no serial. apenas

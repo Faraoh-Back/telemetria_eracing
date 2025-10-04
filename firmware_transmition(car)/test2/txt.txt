@@ -1,0 +1,1 @@
+Esse teste tem o objetivo pegar os dados da can e converte-los e imprimir na serial. Armazenado-los em json tbm

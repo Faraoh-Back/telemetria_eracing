@@ -5,34 +5,43 @@ import pandas as pd
 import csv
 from datetime import datetime
 import os
-#alteração do pedro 
-#alteraçao da helena
-pasta_dados = r'c:\Users\galag\OneDrive\DV\telemetria_eracing\dados_csv' #pasta onde vai salvar os logs
-nome_log = f'log{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv' #nome do arquivo de log de acordo com a data e hora
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+import threading
+
+#dicionário global para armazenar os valores por id e variável
+dicionario_ids = {}
+#pasta_dados = r'c:\Users\galag\OneDrive\DV\telemetria_eracing\dados_csv' #pasta onde vai salvar os logs
+pasta_dados = r'/home/pedroromero/telemetria_eracing/componentes_csv_linux'
+nome_log = f'log{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv' #nome do arquivo de log de acordo com a data e hora
 caminho_log = os.path.join(pasta_dados, nome_log) #caminho completo do arquivo de log
 
+###########################################################################################
+#Lendo as planilhas
+###########################################################################################
 planilha_VCU = pd.read_csv(
-    r'c:\Users\galag\OneDrive\DV\telemetria_eracing\componentes_csv\CAN Description 2025 - VCU.csv',
+    r'/home/pedroromero/telemetria_eracing/componentes_csv_linux/CAN Description 2025 - VCU.csv',
     header=None, skip_blank_lines=True, comment='/'
 )
 planilha_BMS = pd.read_csv(
-    r'c:\Users\galag\OneDrive\DV\telemetria_eracing\componentes_csv\CAN Description 2025 - BMS.csv',
+    r'/home/pedroromero/telemetria_eracing/componentes_csv_linux/CAN Description 2025 - BMS.csv',
     header=None, skip_blank_lines=True, comment='/'
 )
 planilha_ACD = pd.read_csv(
-    r'c:\Users\galag\OneDrive\DV\telemetria_eracing\componentes_csv\CAN Description 2025 - ACD.csv',
+    r'/home/pedroromero/telemetria_eracing/componentes_csv_linux/CAN Description 2025 - ACD.csv',
     header=None, skip_blank_lines=True, comment='/'
 )
 planilha_PAINEL = pd.read_csv(
-    r'c:\Users\galag\OneDrive\DV\telemetria_eracing\componentes_csv\CAN Description 2025 - PAINEL.csv',
+    r'/home/pedroromero/telemetria_eracing/componentes_csv_linux/CAN Description 2025 - PAINEL.csv',
     header=None, skip_blank_lines=True, comment='/'
 )   
 planilha_PT = pd.read_csv(
-    r'c:\Users\galag\OneDrive\DV\telemetria_eracing\componentes_csv\CAN Description 2025 - PT.csv',
+    r'/home/pedroromero/telemetria_eracing/componentes_csv_linux/CAN Description 2025 - PT.csv',
     header=None, skip_blank_lines=True, comment='/'
 )
 planilha_LV_BMS = pd.read_csv(
-    r'c:\Users\galag\OneDrive\DV\telemetria_eracing\componentes_csv\CAN Description 2025 - LV_BMS.csv',
+    r'/home/pedroromero/telemetria_eracing/componentes_csv_linux/CAN Description 2025 - LV_BMS.csv',
     header=None, skip_blank_lines=True, comment='/'
 )
 
@@ -51,8 +60,19 @@ def tratamento_mensagem(dados,client,userdata,msg): #dados é um dicionário com
         hora = time.ctime(dados['timestamp'])
         data = dados['data']
         id_hexadecimal = f'0x{id:08X}' #volta para hexa para o pandas ler na planilha
-        filtro_id_VCU = planilha_VCU[planilha_VCU[1] == id_hexadecimal] # retorna a linha da planilha que tem o id hexadecimal
-        #lógica para ver em qual planilha está o id
+        #mensagens INS
+        if id == '123': # 123 = [0,1,2,3]
+            aceleração_x = (data[1] << 8) | data[0]  
+            aceleração_y = (data[3] << 8) | data[2]  
+        #0x7B é 123 em decimal
+        dicionario_ids['0x7B'] = {}
+        if 'aceleração_x' not in dicionario_ids['0x7B']:
+            dicionario_ids['0x7B']['aceleração_x'] = []
+        elif 'aceleração_y' not in dicionario_ids['0x7B']:
+            dicionario_ids['0x7B']['aceleração_y'] = []
+        dicionario_ids['0x7B']['aceleração_x'].append(aceleração_x)
+        dicionario_ids['0x7B']['aceleração_y'].append(aceleração_y)
+        
         filtro_VCU = planilha_VCU[planilha_VCU[1] == id_hexadecimal]
         filtro_BMS = planilha_BMS[planilha_BMS[1] == id_hexadecimal]
         filtro_ACD = planilha_ACD[planilha_ACD[1] == id_hexadecimal]
@@ -87,6 +107,9 @@ def tratamento_mensagem(dados,client,userdata,msg): #dados é um dicionário com
         else:
                 print(f'ID {id_hexadecimal} não encontrado em nenhuma planilha')
 
+#############################################################################################
+#Funções para extrair os dados da planilha e associar com a mensagem recebida
+#############################################################################################
 def extrai_planilha(id_hexadecimal, data, planilha, nome_planilha):
     #Achar linha do id na planilha e pegar variável - bit
     idxs = planilha.index[planilha[1] == id_hexadecimal].tolist()
@@ -109,9 +132,9 @@ def extrai_planilha(id_hexadecimal, data, planilha, nome_planilha):
         campo_bit = planilha.iloc[i, 2] # coluna 3: especificação (bit(x-y), byte(x), etc)
         campo_multiplicador = planilha.iloc[i, 6]  # coluna 6: multiplicador
         campo_descrição = planilha.iloc[i, 9]   # coluna 9: descrição
-        associação_mensagem_planilha(nome, campo_bit, campo_multiplicador, campo_descrição, planilha, data, lista_bytes_bits_invertidos, string_bytes_bits_invertidos_concatenados, nome_planilha)
+        associação_mensagem_planilha(nome, campo_bit, campo_multiplicador, campo_descrição, planilha, data, lista_bytes_bits_invertidos, string_bytes_bits_invertidos_concatenados, nome_planilha, id_hexadecimal)
 
-def associação_mensagem_planilha(nome, campo_bit, campo_multiplicador, campo_descrição, planilha, data, lista_bytes_bits_invertidos, string_bytes_bits_invertidos_concatenados, nome_planilha):
+def associação_mensagem_planilha(nome, campo_bit, campo_multiplicador, campo_descrição, planilha, data, lista_bytes_bits_invertidos, string_bytes_bits_invertidos_concatenados, nome_planilha, id_hexadecimal):
     # associa o bit da planilha para aquela variável com o bit da mensagem recebida
     print(nome)
     if campo_bit.startswith('bit('):
@@ -144,8 +167,9 @@ def associação_mensagem_planilha(nome, campo_bit, campo_multiplicador, campo_d
         mensagem_invertida = mensagem[::-1]#desinverte e transforma em inteiro, mensagem de fato que chega
         mensagem_int_binário = int((mensagem_invertida), 2)  # converte de binário para inteiro
     print(f"Mensagem '{nome}': bits :{mensagem_int_binário*float(campo_multiplicador)}, descrição: {campo_descrição}")
-    valor_log = mensagem_int_binário * float(campo_multiplicador)  # valor que vai no log salvo
+    valor_log = mensagem_int_binário / float(campo_multiplicador)  # valor que vai no log salvo
     salvar_csv(datetime.now().strftime('%Y%m%d_%H%M%S'), nome, valor_log) 
+    salvar_dicionário(nome,valor_log,id_hexadecimal)
 
 def salvar_csv(hora, nome, valor_log):
     variável_arquivo = os.path.isfile(caminho_log) #variável do arquivo aberto
@@ -156,9 +180,52 @@ def salvar_csv(hora, nome, valor_log):
             escritor.writerow(['Tempo', 'Nome', 'Valor'])  # cabeçalho do CSV
         escritor.writerow([hora, nome, valor_log])  # escreve a linha com os dados
 
-client = mqtt.Client()
-client.connect("172.20.10.2", 1883)  #IP do broker, proprio notebook para se escutar ou antena da FSAE
-client.subscribe("telemetria")
-client.on_message = on_message
-client.loop_forever()
+def salvar_dicionário(nome, valor_log, id_hexadecimal):
+    # lista dos ids nas planilhas de temperaturas, velocidades e tensões (foi na mão)
+    lista_IDs_analisados = [
+        '0x19B50100','0x19B50101','0x19B50102','0x19B50104',
+        '0x19B50105','0x19B50106','0x19B50107','0x19B50108',
+        '0x19B50109','0x19B5010A','0x19B5010B','0x19B50800',
+        '0x19B50801','0x19B50802','0x19B50803','0x19B50007',
+        '0x19B70100','0x19B70800','0x19B70007','0x18FF00EA',
+        '0x18FF00F7','0x18FF01EA','0x18FF02EA','0x18FF01F7',
+        '0x18FF02F7','0x18FF0EF7','0x18FF0DEA',''
+    ]
+    global dicionario_ids # mandar um dicionário que dentro dele tem outros filtrados com chave o ID e o valor a lista de valores_log atualizados
+    if id_hexadecimal in lista_IDs_analisados:
+        if id_hexadecimal not in dicionario_ids:
+            dicionario_ids[id_hexadecimal] = {}
+        if nome not in dicionario_ids[id_hexadecimal]:
+            dicionario_ids[id_hexadecimal][nome] = []
+        dicionario_ids[id_hexadecimal][nome].append(valor_log)
+    return dicionario_ids
 
+class DicionarioPublisher(Node):
+    def __init__(self):
+        super().__init__('telemetria_publisher')
+        self.publisher_ = self.create_publisher(String, 'telemetria', 10)
+        self.timer = self.create_timer(1.0, self.timer_callback)  # publica a cada 1 segundo
+
+    def timer_callback(self):
+        msg = String()
+        msg.data = json.dumps(dicionario_ids)
+        self.publisher_.publish(msg)
+
+def start_ros_publisher():
+    rclpy.init()
+    node = DicionarioPublisher()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+def main():
+    ros_thread = threading.Thread(target=start_ros_publisher, daemon=True)
+    ros_thread.start()
+    client = mqtt.Client()
+    client.connect("172.20.10.2", 1883)  #IP do broker, proprio notebook para se escutar ou antena da FSAE
+    client.subscribe("telemetria")
+    client.on_message = on_message
+    client.loop_forever()
+
+if __name__ == '__main__':
+    main()
