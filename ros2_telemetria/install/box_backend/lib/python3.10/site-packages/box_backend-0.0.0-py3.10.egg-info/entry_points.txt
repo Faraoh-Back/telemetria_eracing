@@ -1,3 +1,0 @@
-[console_scripts]
-box_backend = box_backend.box_backend:main
-

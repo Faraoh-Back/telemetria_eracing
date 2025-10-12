@@ -1,1 +1,1 @@
-Esse teste tem o objetivo pegar os dados da can e converte-los e imprimir na serial. Armazenado-los em json tbm
+A função deste script é unicamente enviar um pacote de dados e confirmar que a operação de envio foi bem-sucedida. Ele não precisa ler o barramento CAN real, apenas simular um pacote e publicá-lo.

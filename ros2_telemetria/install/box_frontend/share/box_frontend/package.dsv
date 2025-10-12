@@ -1,6 +1,0 @@
-source;share/box_frontend/hook/pythonpath.ps1
-source;share/box_frontend/hook/pythonpath.dsv
-source;share/box_frontend/hook/pythonpath.sh
-source;share/box_frontend/hook/ament_prefix_path.ps1
-source;share/box_frontend/hook/ament_prefix_path.dsv
-source;share/box_frontend/hook/ament_prefix_path.sh

@@ -1,0 +1,1 @@
+A função deste script é escutar o tópico MQTT e confirmar que uma mensagem foi recebida. Para tornar o teste autocontido, ele mesmo publicará uma mensagem de teste para si mesmo.

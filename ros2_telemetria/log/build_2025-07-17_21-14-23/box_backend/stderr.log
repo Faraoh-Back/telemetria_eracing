@@ -1,5 +1,0 @@
-  File "/home/pedroromero/telemetria_eracing/ros2_telemetria_backend/install/box_backend/lib/python3.10/site-packages/box_backend/box_telemetria.py", line 16
-    nome_log = f'log{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv' #nome do arquivo de log de acordo com a data e hora
-                                              ^
-SyntaxError: f-string: unmatched '('
-
