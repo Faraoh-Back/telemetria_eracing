@@ -1,0 +1,3 @@
+[console_scripts]
+telemetria_publisher = telemetria.telemetria_publisher:main
+

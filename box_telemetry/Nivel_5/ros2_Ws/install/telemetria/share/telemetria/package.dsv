@@ -1,0 +1,6 @@
+source;share/telemetria/hook/pythonpath.ps1
+source;share/telemetria/hook/pythonpath.dsv
+source;share/telemetria/hook/pythonpath.sh
+source;share/telemetria/hook/ament_prefix_path.ps1
+source;share/telemetria/hook/ament_prefix_path.dsv
+source;share/telemetria/hook/ament_prefix_path.sh
