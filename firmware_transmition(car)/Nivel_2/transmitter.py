@@ -12,7 +12,7 @@ BROKER_IP = "192.168.1.10" # ATENÇÃO: Substitua pelo IP real do seu receptor
 BROKER_PORT = 1883
 MQTT_TOPIC = "telemetria/dados_brutos"
 CAN_INTERFACES = ["can0", "can1"]
-PASTA_CSV_COMPONENTES = "./componentes_csv_linux/"
+PASTA_CSV_COMPONENTES = "../Nivel_1/componentes_csv_linux/"
 # --- FIM DAS CONFIGURAÇÕES ---
 
 def thread_leitura_can(interface_can, cliente_mqtt, mapa_prioridade):
