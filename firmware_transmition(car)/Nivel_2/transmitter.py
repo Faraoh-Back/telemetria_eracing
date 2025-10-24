@@ -2,13 +2,13 @@ import can
 import paho.mqtt.client as mqtt
 import json
 import time
-import threading
+import threading # rodar em paralelo
 
 # Importa as funções do nosso módulo de Nível 1
 import Nivel_1.former as n1 
 
 # --- CONFIGURAÇÕES ---
-BROKER_IP = "192.168.1.10" # ATENÇÃO: Substitua pelo IP real do seu receptor
+BROKER_IP = "192.168.1.2" # ATENÇÃO: Substitua pelo IP real do seu receptor
 BROKER_PORT = 1883
 MQTT_TOPIC = "telemetria/dados_brutos"
 CAN_INTERFACES = ["can0", "can1"]
