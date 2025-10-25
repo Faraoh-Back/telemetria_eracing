@@ -8,7 +8,7 @@ import threading # rodar em paralelo
 import Nivel_1.former as n1 
 
 # --- CONFIGURAÇÕES ---
-BROKER_IP = "192.168.1.2" # ATENÇÃO: Substitua pelo IP real do seu receptor
+BROKER_IP = "192.168.1.4" 
 BROKER_PORT = 1883
 MQTT_TOPIC = "telemetria/dados_brutos"
 CAN_INTERFACES = ["can0", "can1"]

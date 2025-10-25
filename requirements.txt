@@ -1,0 +1,16 @@
+paho-mqtt
+python-can
+pandas# Dependências MQTT
+paho-mqtt
+
+# Dependências para leitura CAN (necessário na Jetson/Carro)
+python-can
+
+# Dependência para leitura de CSVs (Nível 1 na Jetson, potencialmente outros)
+pandas
+
+# Dependência para monitorar arquivos (Nível 5 no Box)
+watchdog
+
+# Nota: rclpy e std_msgs são parte da instalação do ROS 2.
+# Nota: tkinter geralmente é instalado via apt (python3-tk).
