@@ -18,21 +18,29 @@ def carregar_mapa_de_prioridade(pasta_csv):
         if not os.path.isdir(pasta_csv):
             raise FileNotFoundError
 
+        # Percorre todos os arquivos CSV na pasta
         for nome_arquivo in os.listdir(pasta_csv):
+
+            # Somente processa arquivos .csv
             if nome_arquivo.endswith(".csv"):
                 caminho_completo = os.path.join(pasta_csv, nome_arquivo)
                 
+                # Define a prioridade com base no nome do arquivo
                 if "VCU" in nome_arquivo or "BMS" in nome_arquivo:
                     prioridade = 1
+                
                 elif "PT" in nome_arquivo or "PAINEL" in nome_arquivo:
                     prioridade = 2
+
                 else:
                     prioridade = 3
 
                 df = pd.read_csv(caminho_completo, header=None, usecols=[1], skip_blank_lines=True, comment='/')
                 
+                # Interando sobre os IDs CAN na segunda coluna
                 for id_hex_str in df[1].dropna():
                     try:
+                        # Converte o ID de hexadecimal => string => inteiro (base 10) 
                         id_int = int(str(id_hex_str), 16)
                         mapa_prioridade[id_int] = prioridade
                     except (ValueError, TypeError):
@@ -41,11 +49,7 @@ def carregar_mapa_de_prioridade(pasta_csv):
         return mapa_prioridade
     except FileNotFoundError:
         print(f"ERRO (Nível 1): A pasta '{pasta_csv}' não foi encontrada. O mapa de prioridades estará vazio.")
-        return {} Agora preciso de outros scrits em python, para testar funções especificas do código:
-
-test1:
-
-ele tem a função de pegar os dados da rede can formar os dados como é feito na rede can e imprimiir o pacote formado. 
+        return {} 
 
 def formatar_pacote_can(msg, mapa_prioridade):
     """

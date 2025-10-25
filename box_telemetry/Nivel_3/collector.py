@@ -11,7 +11,7 @@ BROKER_PORT = 1883
 MQTT_TOPIC = "telemetria/dados_brutos"
 
 # Nível 4: Pasta onde os logs CSV serão salvos.
-PASTA_ARMAZENAMENTO = "./dados_brutos_telemetria/"
+PASTA_ARMAZENAMENTO = "./Nivel_4/"
 # --- FIM DAS CONFIGURAÇÕES ---
 
 # Variável global para guardar o caminho do arquivo de log da sessão atual

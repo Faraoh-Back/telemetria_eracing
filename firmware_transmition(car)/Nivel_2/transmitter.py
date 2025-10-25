@@ -22,6 +22,7 @@ def thread_leitura_can(interface_can, cliente_mqtt, mapa_prioridade):
     """
     print(f"Nível 2: Iniciando escuta na interface {interface_can}...")
     try:
+        # Abre a interface CAN
         bus = can.interface.Bus(channel=interface_can, bustype="socketcan")
     except Exception as e:
         print(f"ERRO (Nível 2): Não foi possível abrir a interface {interface_can}. {e}")
@@ -29,12 +30,14 @@ def thread_leitura_can(interface_can, cliente_mqtt, mapa_prioridade):
 
     while True:
         try:
+            #Pega uma mensagem CAN do barramento
             msg_can_bruta = bus.recv()
 
             # --- Chamada ao Nível 1 ---
-            pacote_formatado = n1.formatar_pacote_can(msg_can_bruta, mapa_prioridade)
-            # --- Fim da chamada ao Nível 1 ---
+            pacote_formatado = n1.formatar_pacote_can(msg_can_bruta, mapa_prioridade) # Forma o pacote usando o Nível 1
 
+            # --- Nível 2: Envia via MQTT ---
+            # Se o pacote foi formatado corretamente
             if pacote_formatado:
                 # Nível 2: Converte o pacote para JSON e publica via MQTT
                 payload = json.dumps(pacote_formatado)
@@ -62,6 +65,7 @@ if __name__ == "__main__":
 
     # 3. O Nível 2 gerencia as threads para cada interface CAN
     threads = []
+    # Interando sobre as interfaces CAN configuradas
     for interface in CAN_INTERFACES:
         thread = threading.Thread(
             target=thread_leitura_can,
