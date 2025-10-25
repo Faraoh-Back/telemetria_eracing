@@ -10,7 +10,45 @@ Este guia detalha os passos para configurar e executar o sistema de telemetria m
 
 Certifique-se de que seu projeto esteja organizado da seguinte forma:
 
-telemetria_eracing/ ├── box_telemetry/ │ ├── Nivel_3/ │ │ └── collector.py # Receptor MQTT -> CSV │ ├── Nivel_4/ # Pasta para logs CSV (criada automaticamente) │ ├── Nivel_5/ │ │ └── publisher.py # Leitor CSV -> Publisher ROS 2 │ ├── Nivel_6/ │ │ └── visualization.py # Visualizador Tkinter + Receptor ROS 2 │ └── Nivel_7/ │ └── conductor.py # Orquestrador Principal (Ponto de Entrada) ├── car_telemetry/ │ ├── Nivel_1/ │ │ ├── former.py # Formatador de Pacotes CAN │ │ └── componentes_csv_linux/ # Descrições CAN *.csv │ └── Nivel_2/ │ └── transmitter.py # Leitor CAN -> MQTT Publisher ├── requirements.txt # Dependências Python (pip) └── README.md
+telemetria_eracing/ 
+│   ├── box_telemetry
+│   ├── Nivel_3
+│   │   └── collector.py
+│   ├── Nivel_4
+│   │   └── log_teste_local_2025-10-23_23-44-18.csv *Tirar com o .gitignore
+│   ├── Nivel_5
+│   │   ├── publisher.py
+│   │   └── ros2_Ws *Tirar com o .gitignore
+│   │       ├── build
+│   │       ├── install
+│   │       ├── log
+│   │       └── src
+│   ├── Nivel_6
+│   │   └── visualization.py
+│   └── Nivel_7
+│       └── conductor.py
+├── car_telemetry
+│   ├── Nivel_1
+│   │   ├── componentes_csv_linux
+│   │   │   ├── CAN Description 2025 - ACD.csv
+│   │   │   ├── CAN Description 2025 - BMS.csv
+│   │   │   ├── CAN Description 2025 - LV_BMS.csv
+│   │   │   ├── CAN Description 2025 - PAINEL.csv
+│   │   │   ├── CAN Description 2025 - PT.csv
+│   │   │   └── CAN Description 2025 - VCU.csv
+│   │   └── former.py
+│   └── Nivel_2
+│       └── transmitter.py
+├── HowToExecute.md
+├── PointsToImprove.md
+├── README.md
+├── requirements.txt
+└── test
+    ├── dados_brutos_telemetria_teste_local
+    │   └── log_teste_local_2025-10-23_23-44-18.csv *Tirar com o .gitignore
+    ├── receved_pachage.py
+    ├── send_pachage.py
+    └── txt.txt
 
 
 **Importante:** Verifique os caminhos relativos (ex: `../Nivel_X/`) dentro dos scripts Python para garantir que correspondam a esta estrutura.
