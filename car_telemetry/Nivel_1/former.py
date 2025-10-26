@@ -1,6 +1,5 @@
 import os
 import pandas as pd
-import time
 
 def carregar_mapa_de_prioridade(pasta_csv):
     """
@@ -36,71 +35,40 @@ def carregar_mapa_de_prioridade(pasta_csv):
                 else:
                     prioridade = 3
 
-                try:
-                    # Lê o arquivo CSV usando pandas.
-                    # header=None: Não há linha de cabeçalho nos CSVs de exemplo.
-                    # usecols=[1]: Lê apenas a segunda coluna (índice 1), que contém os IDs.
-                    # skip_blank_lines=True: Ignora linhas vazias.
-                    # comment='/': Ignora linhas que começam com / (se houver comentários).
-                    df = pd.read_csv(caminho_completo, header=None, usecols=[1], skip_blank_lines=True, comment='/')
-
-                    # Itera sobre cada ID lido da coluna (dropna remove valores ausentes, se houver).
-                    for id_hex_str in df[1].dropna():
-                        try:
-                            # Converte a string hexadecimal (ex: '0x1A3') para um inteiro.
-                            id_int = int(str(id_hex_str), 16)
-                            # Armazena no dicionário: {ID_inteiro: prioridade_inteiro}
-                            mapa_prioridade[id_int] = prioridade
-                        except (ValueError, TypeError):
-                            # Ignora a linha se o valor na coluna não for um hexadecimal válido.
-                            # print(f"AVISO (Nível 1): Ignorando ID inválido '{id_hex_str}' no arquivo {nome_arquivo}")
-                            continue
-                except pd.errors.EmptyDataError:
-                    print(f"AVISO (Nível 1): Arquivo CSV vazio ou inválido: {nome_arquivo}")
-                except Exception as e:
-                    print(f"ERRO (Nível 1) ao ler CSV '{nome_arquivo}': {e}")
-
-
-        print(f"Nível 1 (Former): Mapa de prioridade carregado com {len(mapa_prioridade)} IDs.")
+                df = pd.read_csv(caminho_completo, header=None, usecols=[1], skip_blank_lines=True, comment='/')
+                
+                # Interando sobre os IDs CAN na segunda coluna
+                for id_hex_str in df[1].dropna():
+                    try:
+                        # Converte o ID de hexadecimal => string => inteiro (base 10) 
+                        id_int = int(str(id_hex_str), 16)
+                        mapa_prioridade[id_int] = prioridade
+                    except (ValueError, TypeError):
+                        continue
+        print(f"Nível 1: Mapa de prioridade carregado com {len(mapa_prioridade)} IDs.")
         return mapa_prioridade
-    
-    except FileNotFoundError as e:
-        # Erro se a pasta principal não for encontrada.
-        print(f"ERRO FATAL (Nível 1): {e}. Verifique o caminho da pasta de CSVs.")
-        # Retorna um mapa vazio para evitar que o Nível 2 falhe completamente,
-        # embora as prioridades ficarão erradas (todas serão 4).
-        return {}
-    except Exception as e:
-        print(f"ERRO inesperado (Nível 1) ao carregar prioridades: {e}")
-        return {}
+    except FileNotFoundError:
+        print(f"ERRO (Nível 1): A pasta '{pasta_csv}' não foi encontrada. O mapa de prioridades estará vazio.")
+        return {} 
 
-def formatar_pacote_can(can_id, data, timestamp, mapa_prioridade):
+def formatar_pacote_can(msg, mapa_prioridade):
     """
-    Recebe um ID CAN (int), dados (lista/tupla de int), timestamp (float)
-    e o mapa de prioridades, e retorna um dicionário com o pacote de dados
-    estruturado para envio via MQTT.
+    Recebe uma mensagem CAN bruta e o mapa de prioridades,
+    e retorna um dicionário com o pacote de dados estruturado.
     Esta é a função central do Nível 1.
     """
-    # Verifica se os dados recebidos são válidos (precaução)
-    if can_id is None or data is None or timestamp is None:
-        print("AVISO (Nível 1): Dados inválidos recebidos para formatação (None).")
+    if msg is None:
         return None
 
-    # Busca a prioridade no mapa usando o ID inteiro.
-    # Se o ID não for encontrado no mapa, usa a prioridade padrão 4 (a mais baixa).
-    prioridade = mapa_prioridade.get(can_id, 4)
+    # Busca a prioridade no mapa. Se não encontrar, usa 4 (a mais baixa).
+    prioridade = mapa_prioridade.get(msg.arbitration_id, 4)
 
-    # Monta o pacote de dados (dicionário Python)
+    # Monta o pacote de dados estruturado
     pacote = {
-        # Formata o ID inteiro de volta para string hexadecimal (0x...) para legibilidade no JSON.
-        # ':03X' garante pelo menos 3 dígitos hexadecimais com zero à esquerda, se necessário. Ajuste se precisar de mais.
-        "id_can": f"0x{can_id:03X}",
-        # Garante que os dados sejam uma LISTA de inteiros (necessário para json.dumps).
-        # A biblioteca Ixxat pode retornar tupla, então convertemos.
-        "dados": list(data),
-        # Usa o timestamp fornecido pelo Nível 2.
+        "id_can": f"0x{msg.arbitration_id:03X}",
+        "dados": list(msg.data),
         "prioridade": prioridade,
-        "timestamp": timestamp
+        "timestamp": msg.timestamp
     }
-
+    
     return pacote
