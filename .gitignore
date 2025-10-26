@@ -1,1 +1,15 @@
-./venv/
+# Arquivos e pastas do Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pasta do Ambiente Virtual
+# (Use o nome da pasta que você criou)
+venv/
+.venv/
+
+# Outros nomes comuns de ambiente virtual
+env/
+.env/
+venv3/
+env3/
