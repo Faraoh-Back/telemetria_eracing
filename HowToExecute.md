@@ -79,7 +79,7 @@ Clone o repositório ou copie os arquivos para a máquina:
 Bash
 
 # Exemplo com Git
-git clone <URL_DO_SEU_REPOSITORIO> telemetria_eracing
+git clone <URL_DO_SEU_REPOSITORIO>
 cd telemetria_eracing
 
 1.3. Instalar Dependências Específicas de Cada Máquina
@@ -108,7 +108,7 @@ Bash
 # Interface CAN
 sudo apt install -y can-utils
 
-# Dependências Python via apt
+# Dependências Python via apt - preferivel fazer no pio e usando o requirements.txt
 sudo apt install -y python3-paho-mqtt python3-pandas python3-can
 
 1.4. (Opcional, Mas Recomendado) Configurar Ambiente Virtual Python

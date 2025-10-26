@@ -1,6 +1,7 @@
 paho-mqtt
 python-can
-pandas# Dependências MQTT
+pandas
+# Dependências MQTT
 paho-mqtt
 
 # Dependências para leitura CAN (necessário na Jetson/Carro)
