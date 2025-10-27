@@ -1,0 +1,9 @@
+acceleration_vector_x_y_1,0x00000001,8B,type,min,max,multiplier,unit,description,description
+,ventor_0,byte(0-1),float,-20,+20,100,m/s²,Linear acceleration in x,First byte 
+,ventor_1,byte(2-3),float,-20,+20,100,rad/s,Angular speed in x,First byte
+,ventor_2,byte(4-5),float,-20,+20,100,m/s²,Linear acceleration in y,First byte
+,ventor_3,byte(6-7),float,-20,+20,100,rad/s,Angular speed in y,First byte
+,,,,,,,,,
+acceleration_vector_z_2,0x0x00000002,4B,type,min,max,multiplier,unit,description,description
+,ventor_0,byte(0-1),float,-20,+20,100,m/s²,Linear acceleration in z,First byte 
+,ventor_1,byte(2-3),float,-20,+20,100,rad/s,Angular speed in z,First byte
