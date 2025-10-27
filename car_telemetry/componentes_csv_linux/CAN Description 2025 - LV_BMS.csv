@@ -8,7 +8,7 @@ voltage_1,0x19B70100,8B,type,min,max,multiplier,unit,description,description
 ,vcell_6,byte(6),float,2,4.55,100,V,Voltage of cell 7,Voltage of cell 7
 ,vcell_7,byte(7),float,2,4.55,100,V,Voltage of cell 8,Voltage of cell 8
 ,,,,,,,,,
-temperature_1,0x19B70800,8B,type,min,max,multiplier,unit,description,description
+temperature_1,0x19B70800,5B,type,min,max,multiplier,unit,description,description
 ,tcell_0,byte(0),int,-100,155,1,°C,Temperature of cell_(1),Temperature of cell_(1)
 ,tcell_1,byte(1),int,-100,155,1,°C,Temperature of cell_(2),Temperature of cell_(2)
 ,tcell_2,byte(2),int,-100,155,1,°C,Temperature of cell_(3),Temperature of cell_(3)
@@ -26,7 +26,7 @@ BMS Diagnostic,0x19B70007,8B,type,min,max,multiplier,unit,description,descriptio
 ,Low_voltage_W,bit(8),bool,0,1,1,logic,,
 ,High_current_W,bit(9),bool,0,1,1,logic,,
 ,High_temperature_W,bit(10),bool,0,1,1,logic,,
+,Validity,byte(3),int,0,255,1,state,Faults  39,Faults  39
 ,Cell_Overheat,bit(19),bool,0,1,1,logic,,
 ,No_Current_Sensor,bit(20),bool,0,1,1,logic,,
 ,Pack_Under_Voltage,bit(21),bool,0,1,1,logic,,
-,Validity,byte(3),int,0,255,1,state,Faults  39,Faults  39
