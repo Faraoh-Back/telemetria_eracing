@@ -15,3 +15,32 @@ watchdog
 
 # Nota: rclpy e std_msgs são parte da instalação do ROS 2.
 # Nota: tkinter geralmente é instalado via apt (python3-tk).
+# Sistema de Telemetria E-Racing UNICAMP - Dependências
+
+# Framework gráfico principal
+# Python Tkinter já está incluído no Python padrão
+
+# Processamento de imagens (logo)
+Pillow>=10.0.0
+
+# Gráficos e visualizações
+matplotlib>=3.7.0
+
+# Monitoramento de arquivos
+watchdog>=3.0.0
+
+# Utilitários de sistema
+pathlib
+datetime
+queue
+
+# Desenvolvimento e testes
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
+# Processamento de dados (opcional, se necessário)
+# pandas>=2.0.0
+# numpy>=1.24.0
+
+# Comunicação CAN (para futuro uso)
+# python-can>=4.0.0  # Para comunicação com dispositivos CAN reais

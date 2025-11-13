@@ -8,7 +8,7 @@ import os
 PASTA_CSV_DESCRICOES = "componentes_csv_linux/" # Exemplo se rodar da raiz
 
 # Nome do arquivo de saída para as mensagens de teste
-ARQUIVO_SAIDA = "sample_can_messages_cansend.log"
+ARQUIVO_SAIDA = "sample_can.log"
 
 # Quantidade de mensagens a gerar
 NUM_MENSAGENS = 10000
