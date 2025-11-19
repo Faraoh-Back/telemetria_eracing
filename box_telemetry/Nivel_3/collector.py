@@ -1,4 +1,4 @@
-# Arquivo: Nivel_3/collector.py (Corrigido)
+# Arquivo: Nivel_3/collector.py (FORMATO CORRETO: signal,timestamp,id_can,priority,value,unit,min,max)
 
 import paho.mqtt.client as mqtt
 import json
@@ -19,7 +19,7 @@ PASTA_ARMAZENAMENTO_PROCESSADO = "../Nivel_4/processados/"
 NOME_ARQUIVO_PROCESSADO_PREFIXO = "log_processado_"
 
 # DEBUG: Ative para ver informações detalhadas
-DEBUG_MODE = True  # Mude para False para produção
+DEBUG_MODE = False  # Mude para True para debug
 
 # --- Variáveis Globais ---
 caminho_arquivo_log_proc = ""
@@ -27,7 +27,7 @@ client_mqtt = None
 parar_collector = threading.Event()
 planilhas_can = {}
 
-# --- Funções de Processamento CAN (CORRIGIDAS) ---
+# --- Funções de Processamento CAN ---
 
 def carregar_planilhas_can(pasta_csv):
     """Carrega os CSVs de descrição CAN."""
@@ -64,29 +64,28 @@ def carregar_planilhas_can(pasta_csv):
 def extrair_valor_can(data_bytes, posicao_str, tipo='int'):
     """
     Extrai valor dos bytes CAN baseado na posição.
-    Corrigido para suportar byte(X), byte(X-Y), bit(X), bit(X-Y)
+    Suporta: byte(X), byte(X-Y), bit(X), bit(X-Y)
     """
     try:
         posicao_str = posicao_str.strip()
         
-        # Caso 1: byte(X) - extrai 1 byte
+        # Caso 1: byte(X)
         if 'byte(' in posicao_str and '-' not in posicao_str:
             byte_num = int(posicao_str.replace('byte(', '').replace(')', ''))
             if byte_num >= len(data_bytes):
                 return None
             return data_bytes[byte_num]
         
-        # Caso 2: byte(X-Y) - extrai múltiplos bytes (Little Endian)
+        # Caso 2: byte(X-Y) - Little Endian
         elif 'byte(' in posicao_str and '-' in posicao_str:
             range_str = posicao_str.replace('byte(', '').replace(')', '')
             start, end = map(int, range_str.split('-'))
             if end >= len(data_bytes):
                 return None
-            # Little Endian
             valor = int.from_bytes(data_bytes[start:end+1], byteorder='little')
             return valor
         
-        # Caso 3: bit(X) - extrai 1 bit
+        # Caso 3: bit(X)
         elif 'bit(' in posicao_str and '-' not in posicao_str:
             bit_num = int(posicao_str.replace('bit(', '').replace(')', ''))
             byte_idx = bit_num // 8
@@ -95,23 +94,19 @@ def extrair_valor_can(data_bytes, posicao_str, tipo='int'):
                 return None
             return (data_bytes[byte_idx] >> bit_idx) & 1
         
-        # Caso 4: bit(X-Y) - extrai range de bits
+        # Caso 4: bit(X-Y)
         elif 'bit(' in posicao_str and '-' in posicao_str:
             range_str = posicao_str.replace('bit(', '').replace(')', '')
             start_bit, end_bit = map(int, range_str.split('-'))
             
-            # Calcula quantos bytes precisamos
             start_byte = start_bit // 8
             end_byte = end_bit // 8
             
             if end_byte >= len(data_bytes):
                 return None
             
-            # Converte bytes para inteiro
-            num_bytes = end_byte - start_byte + 1
             valor_total = int.from_bytes(data_bytes[start_byte:end_byte+1], byteorder='little')
             
-            # Aplica máscara
             num_bits = end_bit - start_bit + 1
             mascara = (1 << num_bits) - 1
             bit_offset = start_bit % 8
@@ -122,27 +117,26 @@ def extrair_valor_can(data_bytes, posicao_str, tipo='int'):
         return None
         
     except Exception as e:
-        print(f"Erro em extrair_valor_can: {e} (pos='{posicao_str}')")
+        if DEBUG_MODE:
+            print(f"Erro em extrair_valor_can: {e} (pos='{posicao_str}')")
         return None
 
 
 def processar_mensagem_can(id_int, data_bytes):
     """
     Processa mensagem CAN e retorna lista de sinais decodificados.
-    CORRIGIDO: Usa o tamanho em bytes (XB) do cabeçalho para saber quantos sinais processar
+    FORMATO NOVO: (signal_name, value, unit, min, max)
     """
     global planilhas_can
     sinais_decodificados = []
     
-    id_hex_str = f"0x{id_int:08X}"  # Formato completo
-    id_hex_str_short = f"0x{id_int:X}"  # Formato curto
+    id_hex_str = f"0x{id_int:08X}"
+    id_hex_str_short = f"0x{id_int:X}"
     
     for nome_planilha, df in planilhas_can.items():
         try:
-            # Busca o ID na coluna 1 (índice 1)
             df[1] = df[1].astype(str).str.strip().str.upper()
             
-            # Tenta encontrar o ID em diferentes formatos
             mascara = df[1].isin([id_hex_str.upper(), id_hex_str_short.upper()])
             linhas_id = df[mascara]
             
@@ -150,74 +144,57 @@ def processar_mensagem_can(id_int, data_bytes):
                 if DEBUG_MODE:
                     print(f"  → ID {id_hex_str_short} encontrado em {nome_planilha}")
                 
-                # Pega a PRIMEIRA linha que contém o ID (linha de cabeçalho do bloco)
                 idx_id = linhas_id.index[0]
-                linha_cabecalho = df.iloc[idx_id]
-                
-                # Extrai o tamanho em bytes da coluna 2 (ex: "8B" = 8 bytes)
-                tamanho_str = str(linha_cabecalho[2]).strip() if pd.notna(linha_cabecalho[2]) else "0B"
-                
-                # Remove o 'B' e converte para inteiro
-                try:
-                    num_bytes = int(tamanho_str.replace('B', '').replace('b', ''))
-                except:
-                    num_bytes = 8  # Default se não conseguir parsear
-                
-                if DEBUG_MODE:
-                    print(f"  → Tamanho da mensagem: {num_bytes} bytes")
-                    print(f"  → Bytes recebidos: {len(data_bytes)} bytes")
-                
-                # Agora processa as linhas de SINAIS que vêm depois do cabeçalho
                 idx_inicio = idx_id + 1
                 
-                # Itera pelas linhas seguintes
-                for i in range(idx_inicio, min(idx_inicio + 50, len(df))):  # Limita busca
+                for i in range(idx_inicio, min(idx_inicio + 50, len(df))):
                     try:
                         linha = df.iloc[i]
                         
-                        # Para se encontrar linha vazia completa
                         if linha.isna().all():
                             break
                         
-                        # Para se encontrar próximo bloco (novo ID)
                         if pd.notna(linha[1]) and str(linha[1]).strip().upper().startswith('0X'):
                             break
                         
-                        # Verifica se é linha de SINAL:
-                        # - Coluna 0 vazia (começa com vírgula no CSV)
-                        # - Coluna 1 tem o NOME do sinal
                         col_0 = str(linha[0]).strip() if pd.notna(linha[0]) else ''
                         col_1 = str(linha[1]).strip() if pd.notna(linha[1]) else ''
                         
-                        # É linha de sinal se col_0 está vazia e col_1 tem conteúdo
                         if col_0 == '' and col_1 != '':
                             nome_sinal = col_1
                             
-                            # Pula linha de cabeçalho interno (se existir)
                             if nome_sinal.lower() in ['type', 'min', 'max', 'unit', '']:
                                 continue
                             
-                            # Extrai informações do sinal
                             posicao_str = str(linha[2]).strip() if pd.notna(linha[2]) else None
                             tipo = str(linha[3]).strip().lower() if pd.notna(linha[3]) else 'int'
                             
-                            # Multiplier está na coluna 6
+                            # Min e Max da coluna 4 e 5
+                            try:
+                                min_csv = float(linha[4]) if pd.notna(linha[4]) and str(linha[4]).strip() != '' else 0
+                            except:
+                                min_csv = 0
+                            
+                            try:
+                                max_csv = float(linha[5]) if pd.notna(linha[5]) and str(linha[5]).strip() != '' else 0
+                            except:
+                                max_csv = 0
+                            
+                            # Multiplier coluna 6
                             try:
                                 multiplicador = float(linha[6]) if pd.notna(linha[6]) and str(linha[6]).strip() != '' else 1.0
                             except:
                                 multiplicador = 1.0
                             
-                            # Unit está na coluna 7
+                            # Unit coluna 7
                             unit = str(linha[7]).strip() if pd.notna(linha[7]) and str(linha[7]).strip() not in ['nan', ''] else ''
                             
-                            # Valida posição
                             if not posicao_str or posicao_str in ['nan', '']:
                                 continue
                             
                             if DEBUG_MODE:
-                                print(f"    🔍 {nome_sinal}: pos={posicao_str}, tipo={tipo}, mult={multiplicador}, unit={unit}")
+                                print(f"    📊 {nome_sinal}: pos={posicao_str}, tipo={tipo}, mult={multiplicador}, unit={unit}, min={min_csv}, max={max_csv}")
                             
-                            # Extrai valor dos bytes
                             valor_bruto = extrair_valor_can(data_bytes, posicao_str, tipo)
                             
                             if valor_bruto is not None:
@@ -227,7 +204,7 @@ def processar_mensagem_can(id_int, data_bytes):
                                 else:
                                     valor_final = valor_bruto
                                 
-                                # Formata saída baseado no tipo
+                                # Formata valor
                                 if tipo == 'bool':
                                     valor_str = 'TRUE' if valor_final else 'FALSE'
                                 elif tipo == 'float' or multiplicador != 1.0:
@@ -235,14 +212,11 @@ def processar_mensagem_can(id_int, data_bytes):
                                 else:
                                     valor_str = str(int(valor_final))
                                 
-                                # Adiciona unidade se existir
-                                if unit:
-                                    valor_str = f"{valor_str} {unit}"
-                                
-                                sinais_decodificados.append((nome_sinal, valor_str))
+                                # FORMATO: (signal_name, value, unit, min, max)
+                                sinais_decodificados.append((nome_sinal, valor_str, unit, min_csv, max_csv))
                                 
                                 if DEBUG_MODE:
-                                    print(f"    ✅ {nome_sinal} = {valor_str} (bruto={valor_bruto})")
+                                    print(f"    ✅ {nome_sinal} = {valor_str} {unit} (min={min_csv}, max={max_csv})")
                             else:
                                 if DEBUG_MODE:
                                     print(f"    ❌ Falha ao extrair {nome_sinal}")
@@ -252,7 +226,6 @@ def processar_mensagem_can(id_int, data_bytes):
                             print(f"  ⚠️ Erro na linha {i}: {e}")
                         continue
                 
-                # Se encontrou sinais, retorna
                 if sinais_decodificados:
                     return sinais_decodificados
                 else:
@@ -285,7 +258,10 @@ def on_connect(client, userdata, flags, rc):
 
 
 def on_message(client, userdata, msg):
-    """Callback para mensagens MQTT recebidas."""
+    """
+    Callback para mensagens MQTT recebidas.
+    Escreve no formato: signal,timestamp,id_can,priority,value,unit,min,max
+    """
     global caminho_arquivo_log_proc
     
     if not caminho_arquivo_log_proc:
@@ -304,28 +280,25 @@ def on_message(client, userdata, msg):
             print(f"⚠ Mensagem inválida: {payload_str}")
             return
         
-        # Converte para inteiro e bytes
         id_int = int(id_can_str, 16)
         data_bytes = bytes(dados_lista)
         
         if DEBUG_MODE:
             print(f"\n📨 Recebido ID={id_can_str}")
             print(f"   Bytes: {' '.join([f'{b:02X}' for b in data_bytes])}")
-            print(f"   Decimal: {dados_lista}")
-        else:
-            print(f"\n📨 ID={id_can_str}, {len(data_bytes)} bytes")
         
-        # Processa a mensagem
+        # Processa a mensagem - RETORNA: (signal_name, value, unit, min, max)
         lista_sinais = processar_mensagem_can(id_int, data_bytes)
         
         if lista_sinais:
             with open(caminho_arquivo_log_proc, mode='a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                for nome_sinal, valor_str in lista_sinais:
-                    linha = [nome_sinal, timestamp, id_can_str, prioridade, valor_str]
+                for signal_name, value, unit, min_val, max_val in lista_sinais:
+                    # FORMATO CORRETO: signal,timestamp,id_can,priority,value,unit,min,max
+                    linha = [signal_name, timestamp, id_can_str, prioridade, value, unit, min_val, max_val]
                     writer.writerow(linha)
             
-            print(f"✓ {len(lista_sinais)} sinais salvos")
+            print(f"✓ {len(lista_sinais)} sinais salvos (formato: signal,ts,id,prio,value,unit,min,max)")
         else:
             print(f"⚠ Nenhum sinal decodificado para ID {id_can_str}")
             
@@ -343,38 +316,35 @@ def run_collector():
     
     print("="*60)
     print("NÍVEL 3 - COLLECTOR & PROCESSOR")
+    print("Formato: signal,timestamp,id_can,priority,value,unit,min,max")
     print("="*60 + "\n")
     
     parar_collector.clear()
     
-    # Carrega descrições CAN
     carregar_planilhas_can(PASTA_CSV_COMPONENTES)
     if not planilhas_can:
         print("ERRO: Não foi possível carregar planilhas CAN!")
         return
     
-    # Cria pasta de saída
     try:
         os.makedirs(PASTA_ARMAZENAMENTO_PROCESSADO, exist_ok=True)
     except Exception as e:
         print(f"ERRO ao criar pasta: {e}")
         return
     
-    # Cria arquivo de log
     timestamp_inicio = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     nome_arquivo = f"{NOME_ARQUIVO_PROCESSADO_PREFIXO}{timestamp_inicio}.csv"
     caminho_arquivo_log_proc = os.path.join(PASTA_ARMAZENAMENTO_PROCESSADO, nome_arquivo)
     
     try:
+        # NÃO escreve cabeçalho - apenas dados
         with open(caminho_arquivo_log_proc, mode='w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(["names", "timestamp", "id_can", "prioridade", "dado"])
+            pass  # Cria arquivo vazio
         print(f"✓ Arquivo criado: {caminho_arquivo_log_proc}\n")
     except IOError as e:
         print(f"ERRO ao criar arquivo: {e}")
         return
     
-    # Conecta ao MQTT
     client_mqtt = mqtt.Client()
     client_mqtt.on_connect = on_connect
     client_mqtt.on_message = on_message
