@@ -1,4 +1,4 @@
-# Arquivo: Nivel_3/collector.py (Corrigido)
+# Arquivo: Nivel_3/collector.py (Versão 2 - COM OFFSET para BMS e LV_BMS)
 
 import paho.mqtt.client as mqtt
 import json
@@ -27,7 +27,7 @@ client_mqtt = None
 parar_collector = threading.Event()
 planilhas_can = {}
 
-# --- Funções de Processamento CAN (CORRIGIDAS) ---
+# --- Funções de Processamento CAN (COM OFFSET) ---
 
 def carregar_planilhas_can(pasta_csv):
     """Carrega os CSVs de descrição CAN."""
@@ -126,10 +126,25 @@ def extrair_valor_can(data_bytes, posicao_str, tipo='int'):
         return None
 
 
+def identificar_tipo_bms(nome_planilha):
+    """
+    Identifica se a planilha é BMS ou LV_BMS para aplicar offset.
+    Retorna: 'BMS', 'LV_BMS', ou None
+    """
+    nome_upper = nome_planilha.upper()
+    if 'LV_BMS' in nome_upper or 'LV-BMS' in nome_upper or 'LVBMS' in nome_upper:
+        return 'LV_BMS'
+    elif 'BMS' in nome_upper and 'LV' not in nome_upper:
+        return 'BMS'
+    return None
+
+
 def processar_mensagem_can(id_int, data_bytes):
     """
     Processa mensagem CAN e retorna lista de sinais decodificados.
-    CORRIGIDO: Usa o tamanho em bytes (XB) do cabeçalho para saber quantos sinais processar
+    VERSÃO 2: COM SUPORTE A OFFSET para BMS e LV_BMS
+    
+    Fórmula: valor_final = (valor_bruto * multiplier) + offset
     """
     global planilhas_can
     sinais_decodificados = []
@@ -139,6 +154,9 @@ def processar_mensagem_can(id_int, data_bytes):
     
     for nome_planilha, df in planilhas_can.items():
         try:
+            # Identifica se é BMS ou LV_BMS
+            tipo_bms = identificar_tipo_bms(nome_planilha)
+            
             # Busca o ID na coluna 1 (índice 1)
             df[1] = df[1].astype(str).str.strip().str.upper()
             
@@ -149,6 +167,8 @@ def processar_mensagem_can(id_int, data_bytes):
             if not linhas_id.empty:
                 if DEBUG_MODE:
                     print(f"  → ID {id_hex_str_short} encontrado em {nome_planilha}")
+                    if tipo_bms:
+                        print(f"  → Tipo detectado: {tipo_bms} (OFFSET ATIVO)")
                 
                 # Pega a PRIMEIRA linha que contém o ID (linha de cabeçalho do bloco)
                 idx_id = linhas_id.index[0]
@@ -201,36 +221,58 @@ def processar_mensagem_can(id_int, data_bytes):
                             posicao_str = str(linha[2]).strip() if pd.notna(linha[2]) else None
                             tipo = str(linha[3]).strip().lower() if pd.notna(linha[3]) else 'int'
                             
+                            # ====== NOVA LÓGICA: MULTIPLIER E OFFSET ======
                             # Multiplier está na coluna 6
                             try:
                                 multiplicador = float(linha[6]) if pd.notna(linha[6]) and str(linha[6]).strip() != '' else 1.0
-                            except:
+                            except (ValueError, TypeError):
                                 multiplicador = 1.0
                             
-                            # Unit está na coluna 7
-                            unit = str(linha[7]).strip() if pd.notna(linha[7]) and str(linha[7]).strip() not in ['nan', ''] else ''
+                            # OFFSET está na coluna 7 (NOVO!)
+                            try:
+                                offset = float(linha[7]) if pd.notna(linha[7]) and str(linha[7]).strip() != '' else 0.0
+                            except (ValueError, TypeError):
+                                offset = 0.0
                             
-                            # Valida posição
-                            if not posicao_str or posicao_str in ['nan', '']:
-                                continue
+                            # Unit está na coluna 8
+                            try:
+                                unit = str(linha[8]).strip() if pd.notna(linha[8]) and str(linha[8]).strip() not in ['nan', ''] else ''
+                            except:
+                                unit = ''
+                            # ============================================
                             
                             if DEBUG_MODE:
-                                print(f"    🔍 {nome_sinal}: pos={posicao_str}, tipo={tipo}, mult={multiplicador}, unit={unit}")
+                                if offset != 0.0:
+                                    print(f"    🔍 {nome_sinal}: pos={posicao_str}, tipo={tipo}, mult={multiplicador}, offset={offset}, unit={unit}")
+                                else:
+                                    print(f"    🔍 {nome_sinal}: pos={posicao_str}, tipo={tipo}, mult={multiplicador}, unit={unit}")
                             
                             # Extrai valor dos bytes
                             valor_bruto = extrair_valor_can(data_bytes, posicao_str, tipo)
                             
                             if valor_bruto is not None:
-                                # Aplica multiplicador (divisão)
-                                if multiplicador != 1.0 and multiplicador != 0:
-                                    valor_final = valor_bruto / multiplicador
+                                # ====== NOVA FÓRMULA COM OFFSET ======
+                                # Para BMS/LV_BMS: valor_final = (valor_bruto * multiplier) + offset
+                                # Para outros: valor_final = valor_bruto / multiplier (lógica antiga)
+                                
+                                if tipo_bms and (offset != 0.0 or multiplicador != 1.0):
+                                    # Lógica BMS/LV_BMS: multiplica primeiro, depois soma offset
+                                    valor_final = (valor_bruto * multiplicador) + offset
+                                    
+                                    if DEBUG_MODE:
+                                        print(f"    📐 Cálculo BMS: ({valor_bruto} * {multiplicador}) + {offset} = {valor_final}")
                                 else:
-                                    valor_final = valor_bruto
+                                    # Lógica antiga (outros componentes): divide pelo multiplicador
+                                    if multiplicador != 1.0 and multiplicador != 0:
+                                        valor_final = valor_bruto / multiplicador
+                                    else:
+                                        valor_final = valor_bruto
+                                # ======================================
                                 
                                 # Formata saída baseado no tipo
                                 if tipo == 'bool':
                                     valor_str = 'TRUE' if valor_final else 'FALSE'
-                                elif tipo == 'float' or multiplicador != 1.0:
+                                elif tipo == 'float' or multiplicador != 1.0 or offset != 0.0:
                                     valor_str = f"{valor_final:.2f}"
                                 else:
                                     valor_str = str(int(valor_final))
@@ -342,7 +384,7 @@ def run_collector():
     global caminho_arquivo_log_proc, client_mqtt, parar_collector
     
     print("="*60)
-    print("NÍVEL 3 - COLLECTOR & PROCESSOR")
+    print("NÍVEL 3 - COLLECTOR & PROCESSOR v2 (COM OFFSET)")
     print("="*60 + "\n")
     
     parar_collector.clear()

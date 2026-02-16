@@ -280,16 +280,73 @@ class TelemetryUI:
         
         # Seções direita
         self._build_key_metrics(right_column)
+        self._build_alerts_section(left_column)
         self._build_main_table(right_column)  # Tabela de sinais agora na direita
         self._build_detail_tables(right_column)
     
     def _build_alerts_section(self, parent):
-        """Constrói seção de alertas."""
-        content = self._create_section(parent, "⚠️  ALERTAS DO SISTEMA", height=100)  # Reduzido de 130 para 80
-        # Configura grid para expansão
-        parent.grid_rowconfigure(0, weight=0)
-        self.alerts_frame = tk.Frame(content, bg=COLORS['bg_light'])
-        self.alerts_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        """
+        Constrói seção de alertas do sistema.
+        NOVO: Exibe alertas críticos e avisos em tempo real.
+        """
+        content = self._create_section(parent, "⚠️  ALERTAS DO SISTEMA", height=120)
+        
+        # Frame para alertas
+        alerts_frame = tk.Frame(content, bg=COLORS['bg_light'])
+        alerts_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Treeview para alertas
+        columns = ('severity', 'message', 'signal')
+        
+        # Estilo
+        style = ttk.Style()
+        style.configure("Alerts.Treeview",
+                    background=COLORS['bg_light'],
+                    foreground=COLORS['white'],
+                    fieldbackground=COLORS['bg_light'],
+                    borderwidth=0,
+                    font=("Arial", 9))
+        style.configure("Alerts.Treeview.Heading",
+                    background=COLORS['bg_medium'],
+                    foreground=COLORS['orange'],
+                    font=("Arial", 10, "bold"))
+        style.map('Alerts.Treeview',
+                background=[('selected', COLORS['orange_dark'])])
+        
+        self.alerts_tree = ttk.Treeview(
+            alerts_frame,
+            columns=columns,
+            show='headings',
+            height=3,
+            style="Alerts.Treeview"
+        )
+        
+        # Cabeçalhos
+        self.alerts_tree.heading('severity', text='TIPO')
+        self.alerts_tree.column('severity', anchor=tk.CENTER, width=100)
+        
+        self.alerts_tree.heading('message', text='MENSAGEM')
+        self.alerts_tree.column('message', anchor=tk.W, width=400)
+        
+        self.alerts_tree.heading('signal', text='SINAL')
+        self.alerts_tree.column('signal', anchor=tk.CENTER, width=150)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(alerts_frame, orient="vertical", command=self.alerts_tree.yview)
+        self.alerts_tree.configure(yscrollcommand=scrollbar.set)
+        
+        # Empacota
+        self.alerts_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Mensagem quando não há alertas
+        self.no_alerts_label = tk.Label(
+            alerts_frame,
+            text="✅ Nenhum alerta ativo - Sistema operando normalmente",
+            bg=COLORS['bg_light'],
+            fg=COLORS['safe'],
+            font=("Arial", 10, "bold")
+        )
     
     def _build_graphs_section(self, parent):
         """Constrói seção de gráficos com abas."""
@@ -394,8 +451,11 @@ class TelemetryUI:
         self.tree_items = {}
     
     def _build_key_metrics(self, parent):
-        """Constrói seção de métricas principais."""
-        content = self._create_section(parent, "🎯  MÉTRICAS PRINCIPAIS", height=220)
+        """
+        Constrói seção de métricas principais.
+        NOVO: 6 métricas - Temp (Média/Máx/Mín) e Volt (Média/Máx/Mín)
+        """
+        content = self._create_section(parent, "📊  MÉTRICAS PRINCIPAIS - BMS ALTA", height=180)
         
         # Configura grid para expansão
         parent.grid_rowconfigure(0, weight=0)
@@ -404,13 +464,17 @@ class TelemetryUI:
         metrics_grid.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         self.metric_cards = {}
+        
+        # NOVA DISPOSIÇÃO: 3 colunas x 2 linhas
         metrics = [
-            ('voltage_high', 'VOLTAGEM ALTA', 'V', 0, 0),
-            ('voltage_low', 'VOLTAGEM BAIXA', 'V', 0, 1),
-            ('speed', 'VELOCIDADE (IMU)', 'm/s', 1, 0),
-            ('temp_high', 'TEMP. MÉDIA ALTA', '°C', 1, 1),
-            ('temp_low', 'TEMP. MÉDIA BAIXA', '°C', 2, 0),
-            ('power', 'POTÊNCIA TOTAL', 'kW', 2, 1),
+            # Linha 1: Temperaturas
+            ('temp_avg', 'TEMP. MÉDIA', '°C', 0, 0),
+            ('temp_max', 'TEMP. MÁXIMA', '°C', 0, 1),
+            ('temp_min', 'TEMP. MÍNIMA', '°C', 0, 2),
+            # Linha 2: Voltagens
+            ('voltage_avg', 'VOLT. MÉDIA', 'V', 1, 0),
+            ('voltage_max', 'VOLT. MÁXIMA', 'V', 1, 1),
+            ('voltage_min', 'VOLT. MÍNIMA', 'V', 1, 2),
         ]
         
         for key, label, unit, row, col in metrics:
@@ -418,11 +482,12 @@ class TelemetryUI:
             card['frame'].grid(row=row, column=col, padx=4, pady=4, sticky='nsew')
             self.metric_cards[key] = card
         
+        # Configura grid para expansão igual
         metrics_grid.grid_rowconfigure(0, weight=1)
         metrics_grid.grid_rowconfigure(1, weight=1)
-        metrics_grid.grid_rowconfigure(2, weight=1)
         metrics_grid.grid_columnconfigure(0, weight=1)
         metrics_grid.grid_columnconfigure(1, weight=1)
+        metrics_grid.grid_columnconfigure(2, weight=1)
     
     def _create_metric_card(self, parent, label, unit):
         """Cria um card de métrica."""
@@ -561,76 +626,180 @@ class TelemetryUI:
         initial_values = [""] * 6
         temp_tree.insert("", tk.END, values=initial_values)    
 
+    """
+    CORREÇÃO ESPECÍFICA: Função _update_temperature_section()
+
+    Esta função substitui a versão bugada no ui_manager.py (linhas 564-632).
+
+    PROBLEMAS CORRIGIDOS:
+    1. Filtro de temperatura agora detecta TODOS os padrões (TCELL_, TEMP, TEMPERATURE, etc.)
+    2. Formatação correta dos nomes de sensores
+    3. Agrupamento correto por categoria (BMS_ALTA, LV_BMS, MOTORES, etc.)
+    4. Layout de 3 sensores por linha (6 colunas totais)
+    """
+
     def _update_temperature_section(self):
-        """Atualiza dados em todas as abas de temperatura."""
+        """
+        Atualiza dados em todas as abas de temperatura.
+        VERSÃO CORRIGIDA - Detecta TODOS os sinais de temperatura corretamente.
+        """
         if not hasattr(self, 'temp_trees') or not self.temp_trees:
             return
         
-        # Obtém todos os sinais de temperatura
-        all_temp_signals = [signal for signal in self.data_manager.get_sorted_signals() 
-                           if 'temp' in signal['signal'].lower()]
+        # Obtém TODOS os sinais de temperatura usando o método corrigido
+        all_temp_signals = self.data_manager.get_temperature_signals()
+        
+        if not all_temp_signals:
+            print("⚠️  Nenhum sinal de temperatura encontrado")
+            return
         
         # Para cada categoria de temperatura
         for category_name, category_data in self.temp_trees.items():
             temp_tree = category_data['tree']
             pattern = category_data['pattern']
             
-            # Limpa linha existente
+            # Limpa linhas existentes
             for item in temp_tree.get_children():
                 temp_tree.delete(item)
             
-            # Filtra sinais baseado no padrão da categoria
+            # Filtra sinais baseado na categoria
+            filtered_signals = []
+            
             if category_name == "BMS_ALTA":
                 # BMS_ALTA: TCELL_0 a TCELL_95
-                filtered_signals = [s for s in all_temp_signals 
-                                  if s['signal'].startswith('TCELL_')]
-                filtered_signals.sort(key=lambda x: int(x['signal'].split('_')[1]))
+                for signal in all_temp_signals:
+                    signal_upper = signal['signal'].upper()
+                    if signal_upper.startswith('TCELL_') and not any(x in signal_upper for x in ['LV', 'LOW']):
+                        try:
+                            num = int(signal_upper.replace('TCELL_', '').split()[0])
+                            if 0 <= num <= 95:
+                                filtered_signals.append(signal)
+                        except:
+                            pass
+                # Ordena por número da célula
+                filtered_signals.sort(key=lambda x: int(x['signal'].upper().replace('TCELL_', '').split()[0]))
+            
             elif category_name == "LV_BMS":
-                # LV_BMS: LV_TCELL_X
-                filtered_signals = [s for s in all_temp_signals 
-                                  if s['signal'].startswith('LV_TCELL')]
-                filtered_signals.sort(key=lambda x: int(x['signal'].split('_')[2]) if len(x['signal'].split('_')) > 2 else 0)
-            else:
-                # Outras categorias: busca por padrões múltiplos
-                if isinstance(pattern, list):
-                    filtered_signals = []
-                    for pat in pattern:
-                        filtered_signals.extend([s for s in all_temp_signals 
-                                               if pat.lower() in s['signal'].lower()])
-                    # Remove duplicatas
-                    filtered_signals = list({s['signal']: s for s in filtered_signals}.values())
-                else:
-                    filtered_signals = [s for s in all_temp_signals 
-                                      if pattern.lower() in s['signal'].lower()]
+                # LV_BMS: LV_TCELL_X ou sinais com LV
+                for signal in all_temp_signals:
+                    signal_upper = signal['signal'].upper()
+                    if any(x in signal_upper for x in ['LV_TCELL', 'LV TCELL', 'LV_T', 'LV T']):
+                        filtered_signals.append(signal)
+                # Ordena por nome
+                filtered_signals.sort(key=lambda x: x['signal'])
             
-            # Preenche as abas com os sensores encontrados (máximo 12 sensores por aba = 6 linhas × 2 colunas)
-            sensor_data = []
-            max_sensors = 12  # 6 linhas × 2 colunas (nome + valor)
+            elif category_name == "MOTORES":
+                # MOTORES: Qualquer temperatura com MOTOR, MTR, MGM, MGP
+                patterns_motor = ['MOTOR', 'MTR', 'MGM', 'MGP', 'ENGINE']
+                for signal in all_temp_signals:
+                    signal_upper = signal['signal'].upper()
+                    if any(pat in signal_upper for pat in patterns_motor):
+                        # Exclui inversores (que têm padrões específicos)
+                        if not any(inv in signal_upper for inv in ['INVERTER', 'INV_']):
+                            filtered_signals.append(signal)
+                filtered_signals.sort(key=lambda x: x['signal'])
             
-            for i in range(min(len(filtered_signals), max_sensors)):
-                signal_data = filtered_signals[i]
-                sensor_name = signal_data['signal']
-                sensor_value = signal_data['value']
+            elif category_name == "INVERSORES":
+                # INVERSORES: Temperatura de inversores
+                patterns_inv = ['INVERTER', 'INV_TEMP', 'INV TEMP', 'DEVICE_TEMP', 'DEVICETEMPERATURE']
+                for signal in all_temp_signals:
+                    signal_upper = signal['signal'].upper()
+                    if any(pat in signal_upper for pat in patterns_inv):
+                        filtered_signals.append(signal)
+                filtered_signals.sort(key=lambda x: x['signal'])
+            
+            elif category_name == "FLUIDOS":
+                # FLUIDOS: Temperatura de fluidos, água, óleo
+                patterns_fluid = ['FLUID', 'COOLANT', 'AGUA', 'OLEO', 'OIL', 'WATER', 'ARREF']
+                for signal in all_temp_signals:
+                    signal_upper = signal['signal'].upper()
+                    if any(pat in signal_upper for pat in patterns_fluid):
+                        filtered_signals.append(signal)
+                filtered_signals.sort(key=lambda x: x['signal'])
+            
+            elif category_name == "OUTROS":
+                # OUTROS: Qualquer temperatura que não se encaixa nas categorias acima
+                used_signals = set()
                 
-                # Ajusta nome do sensor para exibição mais limpa
-                if sensor_name.startswith('TCELL_'):
-                    cell_num = sensor_name.split('_')[1]
-                    sensor_name = f"C{cell_num}"
-                elif sensor_name.startswith('LV_TCELL_'):
-                    cell_num = sensor_name.split('_')[2]
-                    sensor_name = f"LV C{cell_num}"
+                # Marca todos os sinais já usados nas outras categorias
+                for other_cat in ['BMS_ALTA', 'LV_BMS', 'MOTORES', 'INVERSORES', 'FLUIDOS']:
+                    if other_cat in self.temp_trees:
+                        # (não vamos recalcular, apenas pulamos os que já foram categorizados)
+                        pass
                 
-                sensor_data.append(sensor_name)
-                sensor_data.append(sensor_value)
+                # Adiciona sinais que não foram categorizados
+                for signal in all_temp_signals:
+                    signal_upper = signal['signal'].upper()
+                    
+                    # Exclui se já está em outra categoria
+                    is_categorized = False
+                    
+                    # BMS
+                    if signal_upper.startswith('TCELL_'):
+                        is_categorized = True
+                    
+                    # LV_BMS
+                    if 'LV' in signal_upper and 'TCELL' in signal_upper:
+                        is_categorized = True
+                    
+                    # Motores
+                    if any(x in signal_upper for x in ['MOTOR', 'MTR', 'MGM', 'MGP', 'ENGINE']):
+                        if not any(x in signal_upper for x in ['INVERTER', 'INV_']):
+                            is_categorized = True
+                    
+                    # Inversores
+                    if any(x in signal_upper for x in ['INVERTER', 'INV_TEMP', 'DEVICE']):
+                        is_categorized = True
+                    
+                    # Fluidos
+                    if any(x in signal_upper for x in ['FLUID', 'COOLANT', 'AGUA', 'OLEO', 'ARREF']):
+                        is_categorized = True
+                    
+                    # Se não foi categorizado, adiciona a OUTROS
+                    if not is_categorized:
+                        filtered_signals.append(signal)
+                
+                filtered_signals.sort(key=lambda x: x['signal'])
             
-            # Preenche com valores vazios se necessário
-            while len(sensor_data) < 6:  # 6 colunas total (3 pares)
-                sensor_data.append("")
-                sensor_data.append("")
+            # Agora preenche a aba com os sinais filtrados
+            # Layout: 3 sensores por linha = 6 colunas (nome, valor, nome, valor, nome, valor)
             
-            # Insere linha na aba
-            temp_tree.insert("", tk.END, values=sensor_data)
-
+            row_index = 0
+            sensors_per_row = 3
+            
+            # Agrupa sensores em linhas de 3
+            for i in range(0, len(filtered_signals), sensors_per_row):
+                row_data = []
+                
+                # Pega até 3 sensores para esta linha
+                for j in range(sensors_per_row):
+                    sensor_idx = i + j
+                    
+                    if sensor_idx < len(filtered_signals):
+                        signal_data = filtered_signals[sensor_idx]
+                        sensor_name = signal_data['signal']
+                        sensor_value = signal_data['value']
+                        
+                        # Formata nome para exibição
+                        formatted_name = self.data_manager.get_formatted_signal_name(sensor_name)
+                        
+                        # Adiciona nome e valor
+                        row_data.append(formatted_name)
+                        row_data.append(sensor_value)
+                    else:
+                        # Preenche com vazio se não houver sensor suficiente
+                        row_data.append("")
+                        row_data.append("")
+                
+                # Insere linha na aba
+                temp_tree.insert("", tk.END, values=row_data)
+                row_index += 1
+            
+            # Se não houver nenhum sensor, adiciona uma linha vazia
+            if len(filtered_signals) == 0:
+                empty_row = [""] * 6  # 6 colunas vazias
+                temp_tree.insert("", tk.END, values=empty_row)
+                
     def _build_detail_tables(self, parent):
         """Constrói seção de detalhes por sistema."""
         content = self._create_section(parent, "🔧  DETALHES POR SISTEMA")
@@ -642,13 +811,13 @@ class TelemetryUI:
         style = ttk.Style()
         style.configure("Eracing.TNotebook", background=COLORS['bg_light'])
         style.configure("Eracing.TNotebook.Tab",
-                       background=COLORS['bg_medium'],
-                       foreground=COLORS['white'],
-                       padding=[15, 6],
-                       font=("Arial", 9, "bold"))
+                    background=COLORS['bg_medium'],
+                    foreground=COLORS['white'],
+                    padding=[15, 6],
+                    font=("Arial", 9, "bold"))
         style.map("Eracing.TNotebook.Tab",
-                 background=[("selected", COLORS['orange'])],
-                 foreground=[("selected", COLORS['white'])])
+                background=[("selected", COLORS['orange'])],
+                foreground=[("selected", COLORS['white'])])
         
         self.detail_notebook = ttk.Notebook(content, style="Eracing.TNotebook")
         self.detail_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -656,7 +825,7 @@ class TelemetryUI:
         # Cria aba para cada sistema
         for system in SYSTEMS:
             self._create_system_tab(system)
-    
+
     def _create_system_tab(self, system):
         """Cria aba para um sistema específico."""
         tab = tk.Frame(self.detail_notebook, bg=COLORS['bg_light'])
@@ -664,7 +833,7 @@ class TelemetryUI:
         
         # Treeview para o sistema
         tree = ttk.Treeview(tab, columns=('name', 'value'), show='headings',
-                          height=8, style="Eracing.Treeview")
+                            height=8, style="Eracing.Treeview")
         tree.heading('name', text='PARÂMETRO')
         tree.column('name', width=200)
         tree.heading('value', text='VALOR')
@@ -679,7 +848,7 @@ class TelemetryUI:
         
         # Armazena referência
         self.detail_trees[system] = {'tree': tree, 'items': {}}
-    
+
     def _create_section(self, parent, title, height=None):
         """Cria uma seção com título."""
         section = tk.Frame(parent, bg=COLORS['bg_medium'], relief=tk.FLAT, bd=0)
@@ -710,7 +879,7 @@ class TelemetryUI:
         content.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         return content
-    
+
     def toggle_analysis(self):
         """Inicia ou para a análise."""
         if not self.analysis_running:
@@ -723,7 +892,7 @@ class TelemetryUI:
             self.analysis_mode_var.set("⏸️ Pausado")
             self.start_stop_btn.config(text="▶️ Iniciar", bg=COLORS['bg_medium'])
             self.analysis_running = False
-    
+
     def reset_analysis(self):
         """Reseta toda a análise."""
         if messagebox.askyesno("Confirmar", "Deseja realmente zerar toda a análise?\nIsso apagará todos os dados atuais."):
@@ -734,7 +903,7 @@ class TelemetryUI:
             self.status_var.set("🔄 Análise zerada")
             # Limpa interface
             self._clear_all_displays()
-    
+
     def export_data(self):
         """Exporta dados para CSV."""
         try:
@@ -749,7 +918,7 @@ class TelemetryUI:
                 messagebox.showinfo("Sucesso", f"Dados exportados para:\n{filename}")
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao exportar dados:\n{e}")
-    
+
     def _clear_all_displays(self):
         """Limpa todos os displays."""
         # Limpa tabela principal
@@ -776,12 +945,14 @@ class TelemetryUI:
                     tree.delete(item)
                 # Reinsere linha vazia
                 tree.insert("", tk.END, values=[""] * 6)
-    
+
     def update_all_displays(self):
         """Atualiza todos os displays da interface."""
         try:
             # Atualiza métricas principais
             self._update_key_metrics()
+
+            self._update_alerts_section()
             
             # Atualiza tabela principal (ordenada por timestamp)
             self._update_main_table()
@@ -798,28 +969,46 @@ class TelemetryUI:
                 
         except Exception as e:
             print(f"Erro ao atualizar interface: {e}")
-    
+
     def _update_key_metrics(self):
-        """Atualiza métricas principais."""
+        """
+        Atualiza métricas principais.
+        NOVO: 6 métricas calculadas por snapshot.
+        """
         metrics = self.data_manager.get_current_metrics()
         
+        # Atualiza cada card
         for key, value in metrics.items():
-            if key in self.metric_cards:
+            if key in self.metric_cards and value is not None:
                 card = self.metric_cards[key]
-                if key == 'temp_high' or key == 'temp_low':
-                    # Cores baseadas na temperatura
-                    if value > 70:
-                        color = COLORS['warning']
+                
+                # Determina cor baseada no tipo e valor
+                if 'temp' in key:
+                    # Temperaturas
+                    if value > 85:
+                        color = COLORS['warning']  # Vermelho
+                    elif value > 70:
+                        color = COLORS['yellow']   # Amarelo
                     else:
-                        color = COLORS['orange']
+                        color = COLORS['safe']     # Verde
+                    
                     card['value'].config(text=f"{value:.1f}", fg=color)
-                else:
-                    # Formato específico por métrica
-                    if key == 'power':
-                        card['value'].config(text=f"{value:.1f}")
+                
+                elif 'voltage' in key:
+                    # Voltagens
+                    if value < 2.5 or value > 4.2:
+                        color = COLORS['warning']  # Vermelho
+                    elif value < 2.8 or value > 4.0:
+                        color = COLORS['yellow']   # Amarelo
                     else:
-                        card['value'].config(text=f"{value:.2f}")
-    
+                        color = COLORS['safe']     # Verde (faixa normal)
+                    
+                    card['value'].config(text=f"{value:.2f}", fg=color)
+                
+                else:
+                    # Outros
+                    card['value'].config(text=f"{value:.1f}", fg=COLORS['orange'])
+
     def _update_main_table(self):
         """Atualiza tabela principal com ordenação por timestamp."""
         # Remove itens antigos
@@ -844,9 +1033,8 @@ class TelemetryUI:
             
             values = (time_str, signal_name, val, unit)
             self.main_tree.insert("", 0, values=values)
-    
+
     def _update_detail_tables(self):
-        """Atualiza detalhes por sistema."""
         for system in SYSTEMS:
             if system in self.detail_trees:
                 tree_data = self.detail_trees[system]
@@ -857,19 +1045,74 @@ class TelemetryUI:
                 for item in tree.get_children():
                     tree.delete(item)
                 
-                # Obtém sinais do sistema
-                system_signals = self.data_manager.get_system_signals(system)
+                # Obtém sinais do sistema (retorna lista de dicts)
+                system_signals = self.data_manager.get_signals_by_system(system)
+                # system_signals = [{'signal': 'VCELL_0', 'value': '3.96 V'}, ...]
                 
-                for signal_name in system_signals:
-                    if signal_name in self.data_manager.latest_signal_values:
-                        value = self.data_manager.latest_signal_values[signal_name]
-                        tree.insert("", tk.END, values=(signal_name, value))
-    
+                # ✅ CORREÇÃO: Itera sobre os dicts e extrai os valores
+                for signal_dict in system_signals:
+                    signal_name = signal_dict['signal']  # ✅ Extrai o nome
+                    value = signal_dict['value']          # ✅ Extrai o valor
+                    
+                    # Insere na tree
+                    tree.insert("", tk.END, values=(signal_name, value))
+
+    def _update_alerts_section(self):
+        """
+        Atualiza seção de alertas.
+        NOVO: Exibe alertas ativos do sistema.
+        """
+        if not hasattr(self, 'alerts_tree'):
+            return
+        
+        # Limpa alertas anteriores
+        for item in self.alerts_tree.get_children():
+            self.alerts_tree.delete(item)
+        
+        # Obtém alertas ativos
+        alerts = self.data_manager.get_system_alerts()
+        
+        if not alerts:
+            # Nenhum alerta - mostra mensagem de OK
+            if hasattr(self, 'no_alerts_label'):
+                self.no_alerts_label.pack(fill=tk.BOTH, expand=True)
+            self.alerts_tree.pack_forget()
+        else:
+            # Tem alertas - esconde mensagem de OK e mostra tree
+            if hasattr(self, 'no_alerts_label'):
+                self.no_alerts_label.pack_forget()
+            self.alerts_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            
+            # Adiciona cada alerta
+            for alert in alerts:
+                severity = alert['severity'].upper()
+                
+                # Define emoji baseado na severidade
+                if severity == 'CRITICAL':
+                    severity_text = "🔴 CRÍTICO"
+                    tags = ('critical',)
+                else:
+                    severity_text = "🟡 AVISO"
+                    tags = ('warning',)
+                
+                self.alerts_tree.insert(
+                    "",
+                    tk.END,
+                    values=(severity_text, alert['message'], alert['signal']),
+                    tags=tags
+                )
+        
+        # Configura cores das tags
+        self.alerts_tree.tag_configure('critical', background='#330000', foreground=COLORS['warning'])
+        self.alerts_tree.tag_configure('warning', background='#332200', foreground=COLORS['yellow'])
+
+
+
     def on_closing(self):
         """Evento de fechamento da janela."""
         if messagebox.askokcancel("Sair", "Deseja realmente sair do sistema?"):
             self.root.destroy()
-    
+
     def start_ui_loop(self):
         """Inicia o loop principal da interface."""
         if self.root:

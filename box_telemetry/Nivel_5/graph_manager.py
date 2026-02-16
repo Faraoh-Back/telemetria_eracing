@@ -85,7 +85,10 @@ class GraphManager:
         self.canvases['battery_temperature'] = canvas
     
     def create_automotive_graphs(self, parent_notebook):
-        """Cria gráficos para dados automotivos."""
+        """
+        Cria gráficos para dados automotivos.
+        NOVO: Adicionado gráfico de Freio (APS_PERC)
+        """
         # Aba RPM
         rpm_tab = self._create_graph_tab(parent_notebook, "RPM")
         self.create_rpm_graph(rpm_tab)
@@ -105,6 +108,10 @@ class GraphManager:
         # Aba Potência
         power_tab = self._create_graph_tab(parent_notebook, "Potência")
         self.create_power_graph(power_tab)
+        
+        # NOVO: Aba Freio
+        brake_tab = self._create_graph_tab(parent_notebook, "Freio")
+        self.create_brake_graph(brake_tab)
     
     def create_suspension_graphs(self, parent_notebook):
         """Cria gráficos para dados de suspensão."""
@@ -195,6 +202,27 @@ class GraphManager:
         canvas.draw()
         canvas.get_tk_widget().pack(fill='both', expand=True)
         self.canvases['power'] = canvas
+
+    def create_brake_graph(self, parent):
+        """
+        Cria gráfico de porcentagem do freio (APS_PERC).
+        NOVO: Gráfico de freio.
+        """
+        fig = Figure(figsize=GRAPH_CONFIG['figure_size'], 
+                    facecolor=COLORS['bg_light'], 
+                    dpi=GRAPH_CONFIG['dpi'])
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.88, bottom=0.18)
+        
+        ax = fig.add_subplot(111)
+        self._setup_axis_style(ax, 'Freio (%)', 'Tempo (s)')
+        
+        self.figures['brake'] = fig
+        self.axes['brake'] = ax
+        
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill='both', expand=True)
+        self.canvases['brake'] = canvas
     
     def create_suspension_total_graph(self, parent):
         """Cria gráfico de percurso total da suspensão."""
@@ -346,12 +374,67 @@ class GraphManager:
                          edgecolor=COLORS['orange'], labelcolor=COLORS['white'], framealpha=0.9)
     
     def _update_automotive_graphs(self):
-        """Atualiza gráficos automotivos."""
-        # Implementação similar para RPM, Aceleração, Velocidade, Torque, Potência
-        # Cada gráfico teria sua lógica específica de processamento de dados
+        """
+        Atualiza gráficos automotivos.
+        NOVO: Inclui atualização do gráfico de freio.
+        """
+        # Verifica se o gráfico de freio existe
+        if 'brake' not in self.axes:
+            return
         
-        # Placeholder para implementação detalhada
-        pass
+        ax_brake = self.axes['brake']
+        
+        # Limpa gráfico
+        ax_brake.clear()
+        
+        # Configura estilo
+        self._setup_axis_style(ax_brake, 'Freio (%)', 'Tempo (s)')
+        
+        # Obtém dados de tempo
+        time_data = self.data_manager.get_time_data()
+        
+        if len(time_data) < 2:
+            return
+        
+        # Normaliza tempo
+        time_offset = time_data[0]
+        times_norm = [(t - time_offset) for t in time_data]
+        
+        # Obtém dados do freio (APS_PERC)
+        brake_data = []
+        for signal_name, values in self.data_manager.signal_history.items():
+            if 'APS_PERC' in signal_name.upper():
+                brake_data = list(values)
+                break
+        
+        if brake_data and len(brake_data) == len(times_norm):
+            ax_brake.plot(
+                times_norm,
+                brake_data,
+                label='Freio (APS_PERC)',
+                color=COLORS['warning'],  # Vermelho para freio
+                linewidth=GRAPH_CONFIG['line_width'],
+                marker='o',
+                markersize=GRAPH_CONFIG['marker_size'],
+                alpha=GRAPH_CONFIG['alpha']
+            )
+            
+            # Define limites do eixo Y (0-100%)
+            ax_brake.set_ylim(-5, 105)
+            
+            # Adiciona linhas de referência
+            ax_brake.axhline(y=0, color=COLORS['gray'], linestyle='--', linewidth=1, alpha=0.5)
+            ax_brake.axhline(y=100, color=COLORS['gray'], linestyle='--', linewidth=1, alpha=0.5)
+            
+            # Legenda
+            ax_brake.legend(
+                loc='upper left',
+                fontsize=8,
+                facecolor=COLORS['bg_dark'],
+                edgecolor=COLORS['orange'],
+                labelcolor=COLORS['white'],
+                framealpha=0.9
+            )
     
     def _update_suspension_graphs(self):
         """Atualiza gráficos de suspensão."""
