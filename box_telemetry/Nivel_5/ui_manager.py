@@ -649,9 +649,9 @@ class TelemetryUI:
         # Obtém TODOS os sinais de temperatura usando o método corrigido
         all_temp_signals = self.data_manager.get_temperature_signals()
         
-        if not all_temp_signals:
-            print("⚠️  Nenhum sinal de temperatura encontrado")
-            return
+        #if not all_temp_signals:
+         #   print("⚠️  Nenhum sinal de temperatura encontrado")
+          #  return
         
         # Para cada categoria de temperatura
         for category_name, category_data in self.temp_trees.items():

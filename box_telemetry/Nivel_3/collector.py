@@ -1,4 +1,4 @@
-# Arquivo: Nivel_3/collector.py (Versão 2 - COM OFFSET para BMS e LV_BMS)
+# Arquivo: Nivel_3/collector.py (Versão 3 - COM OFFSET para BMS, LV_BMS e VCU)
 
 import paho.mqtt.client as mqtt
 import json
@@ -64,87 +64,119 @@ def carregar_planilhas_can(pasta_csv):
 def extrair_valor_can(data_bytes, posicao_str, tipo='int'):
     """
     Extrai valor dos bytes CAN baseado na posição.
-    Corrigido para suportar byte(X), byte(X-Y), bit(X), bit(X-Y)
+    Suporta byte(X), byte(X-Y), bit(X), bit(X-Y).
+
+    CORREÇÃO SIGNED: Para tipo 'int' ou 'float' com múltiplos bytes,
+    interpreta como SIGNED (int16 little-endian via struct.unpack).
+    Bits e bytes únicos continuam como unsigned (usados para estados/flags).
     """
+    import struct
+
     try:
         posicao_str = posicao_str.strip()
-        
-        # Caso 1: byte(X) - extrai 1 byte
+        tipo_lower = tipo.strip().lower()
+
+        # Caso 1: byte(X) — extrai 1 byte (unsigned, usado para temp/status)
         if 'byte(' in posicao_str and '-' not in posicao_str:
             byte_num = int(posicao_str.replace('byte(', '').replace(')', ''))
             if byte_num >= len(data_bytes):
                 return None
             return data_bytes[byte_num]
-        
-        # Caso 2: byte(X-Y) - extrai múltiplos bytes (Little Endian)
+
+        # Caso 2: byte(X-Y) — extrai múltiplos bytes
         elif 'byte(' in posicao_str and '-' in posicao_str:
             range_str = posicao_str.replace('byte(', '').replace(')', '')
             start, end = map(int, range_str.split('-'))
             if end >= len(data_bytes):
                 return None
-            # Little Endian
-            valor = int.from_bytes(data_bytes[start:end+1], byteorder='little')
-            return valor
-        
-        # Caso 3: bit(X) - extrai 1 bit
+            chunk = data_bytes[start:end+1]
+            num_bytes = end - start + 1
+
+            # Escolhe interpretação: SIGNED para int/float, UNSIGNED para bool/state
+            if tipo_lower in ('int', 'float'):
+                # Usa struct para garantir signed little-endian
+                fmt_map = {1: '<b', 2: '<h', 4: '<i', 8: '<q'}
+                fmt = fmt_map.get(num_bytes)
+                if fmt:
+                    return struct.unpack(fmt, chunk)[0]
+                else:
+                    # Fallback: unsigned para tamanhos não padrão
+                    return int.from_bytes(chunk, byteorder='little')
+            else:
+                # bool, state, etc. → unsigned
+                return int.from_bytes(chunk, byteorder='little')
+
+        # Caso 3: bit(X) — extrai 1 bit (sempre unsigned)
         elif 'bit(' in posicao_str and '-' not in posicao_str:
             bit_num = int(posicao_str.replace('bit(', '').replace(')', ''))
             byte_idx = bit_num // 8
-            bit_idx = bit_num % 8
+            bit_idx  = bit_num % 8
             if byte_idx >= len(data_bytes):
                 return None
             return (data_bytes[byte_idx] >> bit_idx) & 1
-        
-        # Caso 4: bit(X-Y) - extrai range de bits
+
+        # Caso 4: bit(X-Y) — extrai range de bits (sempre unsigned)
         elif 'bit(' in posicao_str and '-' in posicao_str:
             range_str = posicao_str.replace('bit(', '').replace(')', '')
             start_bit, end_bit = map(int, range_str.split('-'))
-            
-            # Calcula quantos bytes precisamos
+
             start_byte = start_bit // 8
-            end_byte = end_bit // 8
-            
+            end_byte   = end_bit   // 8
             if end_byte >= len(data_bytes):
                 return None
-            
-            # Converte bytes para inteiro
-            num_bytes = end_byte - start_byte + 1
+
             valor_total = int.from_bytes(data_bytes[start_byte:end_byte+1], byteorder='little')
-            
-            # Aplica máscara
-            num_bits = end_bit - start_bit + 1
-            mascara = (1 << num_bits) - 1
-            bit_offset = start_bit % 8
-            valor = (valor_total >> bit_offset) & mascara
-            
-            return valor
-        
+            num_bits  = end_bit - start_bit + 1
+            mascara   = (1 << num_bits) - 1
+            bit_off   = start_bit % 8
+            return (valor_total >> bit_off) & mascara
+
         return None
-        
+
     except Exception as e:
         print(f"Erro em extrair_valor_can: {e} (pos='{posicao_str}')")
         return None
 
 
-def identificar_tipo_bms(nome_planilha):
+def identificar_tipo_componente(nome_planilha):
     """
-    Identifica se a planilha é BMS ou LV_BMS para aplicar offset.
-    Retorna: 'BMS', 'LV_BMS', ou None
+    Identifica o tipo de componente para aplicar offset corretamente.
+    
+    VERSÃO 3: Expandido para suportar BMS, LV_BMS e VCU
+    
+    Retorna: 'BMS', 'LV_BMS', 'VCU', ou None
     """
     nome_upper = nome_planilha.upper()
+    
+    # LV_BMS (verificar primeiro, antes de BMS)
     if 'LV_BMS' in nome_upper or 'LV-BMS' in nome_upper or 'LVBMS' in nome_upper:
         return 'LV_BMS'
+    
+    # BMS (verificar se não tem LV)
     elif 'BMS' in nome_upper and 'LV' not in nome_upper:
         return 'BMS'
+    
+    # VCU (NOVO!)
+    elif 'VCU' in nome_upper:
+        return 'VCU'
+    
     return None
 
 
 def processar_mensagem_can(id_int, data_bytes):
     """
     Processa mensagem CAN e retorna lista de sinais decodificados.
-    VERSÃO 2: COM SUPORTE A OFFSET para BMS e LV_BMS
     
-    Fórmula: valor_final = (valor_bruto * multiplier) + offset
+    VERSÃO 3: COM SUPORTE A OFFSET para BMS, LV_BMS e VCU
+    
+    Fórmula unificada: valor_final = (valor_bruto * multiplier) + offset
+    
+    Componentes que usam offset:
+    - BMS: TCELL (offset -100), VCELL (offset +2.00)
+    - LV_BMS: LV_TCELL (offset -100), LV_VCELL (offset +2.00)
+    - VCU: act_DeviceTemperature (offset -40), act_MotorTemperature (offset -40),
+           act_Speed (offset -32000), setp_Speed (offset -32000),
+           setp_Torque (offset -6400), act_Power (offset -160), etc.
     """
     global planilhas_can
     sinais_decodificados = []
@@ -154,8 +186,8 @@ def processar_mensagem_can(id_int, data_bytes):
     
     for nome_planilha, df in planilhas_can.items():
         try:
-            # Identifica se é BMS ou LV_BMS
-            tipo_bms = identificar_tipo_bms(nome_planilha)
+            # Identifica o tipo de componente (BMS, LV_BMS, VCU, ou None)
+            tipo_componente = identificar_tipo_componente(nome_planilha)
             
             # Busca o ID na coluna 1 (índice 1)
             df[1] = df[1].astype(str).str.strip().str.upper()
@@ -167,8 +199,8 @@ def processar_mensagem_can(id_int, data_bytes):
             if not linhas_id.empty:
                 if DEBUG_MODE:
                     print(f"  → ID {id_hex_str_short} encontrado em {nome_planilha}")
-                    if tipo_bms:
-                        print(f"  → Tipo detectado: {tipo_bms} (OFFSET ATIVO)")
+                    if tipo_componente:
+                        print(f"  → Tipo detectado: {tipo_componente} (OFFSET ATIVO)")
                 
                 # Pega a PRIMEIRA linha que contém o ID (linha de cabeçalho do bloco)
                 idx_id = linhas_id.index[0]
@@ -221,14 +253,14 @@ def processar_mensagem_can(id_int, data_bytes):
                             posicao_str = str(linha[2]).strip() if pd.notna(linha[2]) else None
                             tipo = str(linha[3]).strip().lower() if pd.notna(linha[3]) else 'int'
                             
-                            # ====== NOVA LÓGICA: MULTIPLIER E OFFSET ======
+                            # ====== LÓGICA DE MULTIPLIER E OFFSET ======
                             # Multiplier está na coluna 6
                             try:
                                 multiplicador = float(linha[6]) if pd.notna(linha[6]) and str(linha[6]).strip() != '' else 1.0
                             except (ValueError, TypeError):
                                 multiplicador = 1.0
                             
-                            # OFFSET está na coluna 7 (NOVO!)
+                            # OFFSET está na coluna 7
                             try:
                                 offset = float(linha[7]) if pd.notna(linha[7]) and str(linha[7]).strip() != '' else 0.0
                             except (ValueError, TypeError):
@@ -251,23 +283,28 @@ def processar_mensagem_can(id_int, data_bytes):
                             valor_bruto = extrair_valor_can(data_bytes, posicao_str, tipo)
                             
                             if valor_bruto is not None:
-                                # ====== NOVA FÓRMULA COM OFFSET ======
-                                # Para BMS/LV_BMS: valor_final = (valor_bruto * multiplier) + offset
-                                # Para outros: valor_final = valor_bruto / multiplier (lógica antiga)
+                                # ====== FÓRMULA UNIVERSAL ======
+                                #
+                                # valor_final = (valor_bruto × multiplicador) + offset
+                                #
+                                # Cobre TODOS os componentes:
+                                #   BMS:  (bruto × 0.01) + 2.00   → Voltagem
+                                #         (bruto × 1.0)  + (-100) → Temperatura
+                                #   VCU:  (bruto × 1.0)  + (-40)  → Temperatura inversor
+                                #         (bruto × 1.0)  + (-32000) → RPM
+                                #   IMU:  (bruto × 0.01) + 0.0    → m/s², rad/s, km/h
+                                #         Ex: 979 × 0.01 = 9.79 m/s²  (≈ gravidade ✅)
+                                #
+                                # NUNCA dividir: o multiplicador do CSV é fator de escala,
+                                # não denominador.
                                 
-                                if tipo_bms and (offset != 0.0 or multiplicador != 1.0):
-                                    # Lógica BMS/LV_BMS: multiplica primeiro, depois soma offset
+                                if offset != 0.0 or multiplicador != 1.0:
                                     valor_final = (valor_bruto * multiplicador) + offset
-                                    
                                     if DEBUG_MODE:
-                                        print(f"    📐 Cálculo BMS: ({valor_bruto} * {multiplicador}) + {offset} = {valor_final}")
+                                        print(f"    📐 ({valor_bruto} × {multiplicador}) + {offset} = {valor_final}")
                                 else:
-                                    # Lógica antiga (outros componentes): divide pelo multiplicador
-                                    if multiplicador != 1.0 and multiplicador != 0:
-                                        valor_final = valor_bruto / multiplicador
-                                    else:
-                                        valor_final = valor_bruto
-                                # ======================================
+                                    valor_final = valor_bruto
+                                # ================================
                                 
                                 # Formata saída baseado no tipo
                                 if tipo == 'bool':
@@ -352,111 +389,107 @@ def on_message(client, userdata, msg):
         
         if DEBUG_MODE:
             print(f"\n📨 Recebido ID={id_can_str}")
-            print(f"   Bytes: {' '.join([f'{b:02X}' for b in data_bytes])}")
-            print(f"   Decimal: {dados_lista}")
-        else:
-            print(f"\n📨 ID={id_can_str}, {len(data_bytes)} bytes")
+            print(f"   Bytes: {' '.join(f'{b:02X}' for b in data_bytes)}")
         
         # Processa a mensagem
-        lista_sinais = processar_mensagem_can(id_int, data_bytes)
+        sinais = processar_mensagem_can(id_int, data_bytes)
         
-        if lista_sinais:
-            with open(caminho_arquivo_log_proc, mode='a', newline='', encoding='utf-8') as f:
+        if sinais:
+            # Salva no log
+            with open(caminho_arquivo_log_proc, 'a', encoding='utf-8', newline='') as f:
                 writer = csv.writer(f)
-                for nome_sinal, valor_str in lista_sinais:
-                    linha = [nome_sinal, timestamp, id_can_str, prioridade, valor_str]
-                    writer.writerow(linha)
+                for nome_sinal, valor in sinais:
+                    writer.writerow([nome_sinal, timestamp, id_can_str, prioridade, valor])
             
-            print(f"✓ {len(lista_sinais)} sinais salvos")
+            if DEBUG_MODE:
+                print(f"   ✅ {len(sinais)} sinais salvos no log")
         else:
-            print(f"⚠ Nenhum sinal decodificado para ID {id_can_str}")
-            
-    except json.JSONDecodeError:
-        print(f"✗ JSON inválido: {msg.payload.decode('utf-8', errors='ignore')}")
+            if DEBUG_MODE:
+                print(f"   ⚠️ Nenhum sinal decodificado")
+                
     except Exception as e:
-        print(f"✗ Erro em on_message: {e}")
+        print(f"❌ Erro ao processar mensagem: {e}")
+        if DEBUG_MODE:
+            import traceback
+            traceback.print_exc()
 
 
-# --- Função Principal ---
+def on_disconnect(client, userdata, rc):
+    """Callback de desconexão MQTT."""
+    if rc != 0:
+        print(f"⚠ Desconexão inesperada do broker (código {rc})")
 
-def run_collector():
-    """Inicia o coletor e processador."""
-    global caminho_arquivo_log_proc, client_mqtt, parar_collector
+
+# --- Funções de Controle ---
+
+def iniciar_arquivo_log():
+    """Cria arquivo de log processado."""
+    global caminho_arquivo_log_proc
     
-    print("="*60)
-    print("NÍVEL 3 - COLLECTOR & PROCESSOR v2 (COM OFFSET)")
-    print("="*60 + "\n")
-    
-    parar_collector.clear()
-    
-    # Carrega descrições CAN
-    carregar_planilhas_can(PASTA_CSV_COMPONENTES)
-    if not planilhas_can:
-        print("ERRO: Não foi possível carregar planilhas CAN!")
-        return
-    
-    # Cria pasta de saída
-    try:
-        os.makedirs(PASTA_ARMAZENAMENTO_PROCESSADO, exist_ok=True)
-    except Exception as e:
-        print(f"ERRO ao criar pasta: {e}")
-        return
-    
-    # Cria arquivo de log
-    timestamp_inicio = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    nome_arquivo = f"{NOME_ARQUIVO_PROCESSADO_PREFIXO}{timestamp_inicio}.csv"
+    os.makedirs(PASTA_ARMAZENAMENTO_PROCESSADO, exist_ok=True)
+    timestamp_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    nome_arquivo = f"{NOME_ARQUIVO_PROCESSADO_PREFIXO}{timestamp_str}.csv"
     caminho_arquivo_log_proc = os.path.join(PASTA_ARMAZENAMENTO_PROCESSADO, nome_arquivo)
     
-    try:
-        with open(caminho_arquivo_log_proc, mode='w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(["names", "timestamp", "id_can", "prioridade", "dado"])
-        print(f"✓ Arquivo criado: {caminho_arquivo_log_proc}\n")
-    except IOError as e:
-        print(f"ERRO ao criar arquivo: {e}")
-        return
+    # Cria arquivo com cabeçalho
+    with open(caminho_arquivo_log_proc, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['names', 'timestamp', 'id_can', 'prioridade', 'dado'])
     
-    # Conecta ao MQTT
-    client_mqtt = mqtt.Client()
-    client_mqtt.on_connect = on_connect
-    client_mqtt.on_message = on_message
+    print(f"✓ Log criado: {caminho_arquivo_log_proc}\n")
+
+
+def conectar_mqtt():
+    """Conecta ao broker MQTT."""
+    global client_mqtt
     
     try:
+        client_mqtt = mqtt.Client()
+        client_mqtt.on_connect = on_connect
+        client_mqtt.on_message = on_message
+        client_mqtt.on_disconnect = on_disconnect
+        
+        print(f"Conectando ao broker MQTT em {BROKER_IP}:{BROKER_PORT}...")
         client_mqtt.connect(BROKER_IP, BROKER_PORT, 60)
         client_mqtt.loop_start()
         
-        print("Aguardando mensagens MQTT...\n")
-        print("Pressione Ctrl+C para parar.\n")
-        
-        while not parar_collector.is_set():
-            time.sleep(0.001)
-            
     except Exception as e:
-        print(f"ERRO MQTT: {e}")
-    finally:
-        print("\n" + "="*60)
-        print("Encerrando Nível 3...")
-        print("="*60)
-        if client_mqtt and client_mqtt.is_connected():
+        print(f"❌ Erro ao conectar MQTT: {e}")
+        exit(1)
+
+
+def main():
+    """Função principal do collector."""
+    global client_mqtt, parar_collector
+    
+    print("=" * 60)
+    print("NÍVEL 3 - COLLECTOR v3 (COM OFFSET: BMS + LV_BMS + VCU)")
+    print("=" * 60)
+    print()
+    
+    # Carrega planilhas CAN
+    carregar_planilhas_can(PASTA_CSV_COMPONENTES)
+    
+    # Cria arquivo de log
+    iniciar_arquivo_log()
+    
+    # Conecta ao MQTT
+    conectar_mqtt()
+    
+    print("Sistema ativo. Pressione Ctrl+C para encerrar.")
+    print("-" * 60)
+    
+    try:
+        while not parar_collector.is_set():
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n\nEncerrando collector...")
+        parar_collector.set()
+        if client_mqtt:
             client_mqtt.loop_stop()
             client_mqtt.disconnect()
-        print("✓ Desconectado")
+        print("✓ Collector encerrado.\n")
 
 
-def stop_collector():
-    """Para o coletor."""
-    global parar_collector
-    print("Solicitando parada...")
-    parar_collector.set()
-
-
-# --- Execução ---
 if __name__ == "__main__":
-    try:
-        run_collector()
-    except KeyboardInterrupt:
-        print("\n\nCtrl+C recebido!")
-        stop_collector()
-    except Exception as e:
-        print(f"\nERRO FATAL: {e}")
-        stop_collector()
+    main()
